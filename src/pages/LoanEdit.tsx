@@ -224,11 +224,19 @@ const LoanEdit = () => {
       const { rendimentoTotal, rendimentoIntermediador } = calcularRendimentos();
       
       const emprestimoAtualizado = {
-        ...emprestimo,
+        devedor: emprestimo.devedor,
+        valor_total: emprestimo.valor_total,
+        taxa_mensal: emprestimo.taxa_mensal,
         taxa_total: emprestimo.taxa_mensal,
-        rendimento_mensal: rendimentoTotal,
+        taxa_intermediador: emprestimo.taxa_intermediador,
+        intermediador_nome: emprestimo.intermediador_nome,
         rendimento_total: rendimentoTotal,
-        rendimento_intermediador: rendimentoIntermediador
+        rendimento_intermediador: rendimentoIntermediador,
+        data_emprestimo: emprestimo.data_emprestimo,
+        tipo_pagamento: emprestimo.tipo_pagamento,
+        status: emprestimo.status,
+        observacoes: emprestimo.observacoes
+        // Removido rendimento_mensal que parece ser calculado automaticamente
       };
 
       // Atualizar empréstimo
