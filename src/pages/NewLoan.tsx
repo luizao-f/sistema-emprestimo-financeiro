@@ -99,6 +99,11 @@ const NewLoan = () => {
     }));
 
     setFormData(prev => ({ ...prev, parceiros: newParceiros }));
+
+    toast({
+      title: "Percentuais calculados",
+      description: "Os percentuais foram calculados proporcionalmente aos valores investidos.",
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -110,7 +115,8 @@ const NewLoan = () => {
     // Validações
     if (formData.valor_total <= 0) {
       toast({
-        title: "Erro", description: "O valor total deve ser maior que zero.",
+        title: "Erro de validação",
+        description: "O valor total deve ser maior que zero.",
         variant: "destructive",
       });
       return;
@@ -118,7 +124,8 @@ const NewLoan = () => {
 
     if (totalInvestido !== formData.valor_total) {
       toast({
-        title: "Erro", description: "A soma dos valores investidos deve ser igual ao valor total.",
+        title: "Erro de validação",
+        description: "A soma dos valores investidos deve ser igual ao valor total do empréstimo.",
         variant: "destructive",
       });
       return;
@@ -126,7 +133,17 @@ const NewLoan = () => {
 
     if (Math.abs(totalPercentuais - 100) > 0.01) {
       toast({
-        title: "Erro", description: "A soma dos percentuais deve ser igual a 100%.",
+        title: "Erro de validação",
+        description: "A soma dos percentuais de participação deve ser igual a 100%.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.taxa_intermediador > 0 && !formData.intermediador_nome?.trim()) {
+      toast({
+        title: "Erro de validação",
+        description: "Informe o nome do intermediador quando houver taxa de intermediação.",
         variant: "destructive",
       });
       return;
@@ -217,12 +234,14 @@ const NewLoan = () => {
         <Card>
           <CardHeader>
             <CardTitle>Informações Básicas</CardTitle>
+            <CardDescription>Dados gerais do empréstimo</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Nome do Devedor *</Label>
+                <Label htmlFor="devedor">Nome do Devedor *</Label>
                 <Input
+                  id="devedor"
                   placeholder="Ex: João Silva"
                   value={formData.devedor}
                   onChange={(e) => handleInputChange('devedor', e.target.value)}
@@ -230,8 +249,9 @@ const NewLoan = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Data do Empréstimo *</Label>
+                <Label htmlFor="data_emprestimo">Data do Empréstimo *</Label>
                 <Input
+                  id="data_emprestimo"
                   type="date"
                   value={formData.data_emprestimo}
                   onChange={(e) => handleInputChange('data_emprestimo', e.target.value)}
@@ -241,10 +261,11 @@ const NewLoan = () => {
             </div>
 
             <div className="space-y-2">
-              <Label>Valor Total do Empréstimo *</Label>
+              <Label htmlFor="valor_total">Valor Total do Empréstimo *</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
                 <Input
+                  id="valor_total"
                   type="number"
                   step="0.01"
                   min="0"
@@ -259,8 +280,9 @@ const NewLoan = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Taxa Total (%) *</Label>
+                <Label htmlFor="taxa_total">Taxa Total (%) *</Label>
                 <Input
+                  id="taxa_total"
                   type="number"
                   step="0.01"
                   min="0"
@@ -271,8 +293,9 @@ const NewLoan = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Taxa do Intermediador (%)</Label>
+                <Label htmlFor="taxa_intermediador">Taxa do Intermediador (%)</Label>
                 <Input
+                  id="taxa_intermediador"
                   type="number"
                   step="0.01"
                   min="0"
@@ -282,8 +305,9 @@ const NewLoan = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Taxa dos Investidores (%)</Label>
+                <Label htmlFor="taxa_investidores">Taxa dos Investidores (%)</Label>
                 <Input
+                  id="taxa_investidores"
                   value={taxaInvestidores.toFixed(2)}
                   disabled
                   className="bg-muted"
@@ -293,8 +317,9 @@ const NewLoan = () => {
 
             {formData.taxa_intermediador > 0 && (
               <div className="space-y-2">
-                <Label>Nome do Intermediador *</Label>
+                <Label htmlFor="intermediador_nome">Nome do Intermediador *</Label>
                 <Input
+                  id="intermediador_nome"
                   placeholder="Nome da pessoa/empresa intermediadora"
                   value={formData.intermediador_nome}
                   onChange={(e) => handleInputChange('intermediador_nome', e.target.value)}
@@ -302,15 +327,56 @@ const NewLoan = () => {
                 />
               </div>
             )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="tipo_pagamento">Tipo de Pagamento *</Label>
+                <Select value={formData.tipo_pagamento} onValueChange={(value) => handleInputChange('tipo_pagamento', value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                    <SelectItem value="trimestral">Trimestral</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="status">Status *</Label>
+                <Select value={formData.status} onValueChange={(value) => handleInputChange('status', value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="finalizado">Finalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="data_vencimento">Data de Vencimento</Label>
+              <Input
+                id="data_vencimento"
+                type="date"
+                value={formData.data_vencimento}
+                onChange={(e) => handleInputChange('data_vencimento', e.target.value)}
+              />
+            </div>
           </CardContent>
         </Card>
 
-        {/* Parceiros */}
+        {/* Parceiros/Investidores */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle>Parceiros/Investidores</CardTitle>
+                <CardDescription>Configure os investidores e suas participações</CardDescription>
               </div>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={calcularPercentuaisAutomatico}>
@@ -319,7 +385,7 @@ const NewLoan = () => {
                 </Button>
                 <Button type="button" variant="outline" size="sm" onClick={addParceiro}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Adicionar
+                  Adicionar Parceiro
                 </Button>
               </div>
             </div>
@@ -343,7 +409,7 @@ const NewLoan = () => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>Nome *</Label>
+                    <Label>Nome do Parceiro *</Label>
                     <Input
                       placeholder="Nome completo"
                       value={parceiro.nome_parceiro}
@@ -390,21 +456,32 @@ const NewLoan = () => {
               </div>
             ))}
             
-            {/* Resumo */}
-            <div className="bg-muted/30 p-4 rounded-lg">
-              <h4 className="font-medium mb-3">Resumo</h4>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+            {/* Resumo Detalhado */}
+            <div className="bg-muted/30 p-4 rounded-lg space-y-4">
+              <h4 className="font-medium text-lg">Resumo Financeiro</h4>
+              
+              {/* Resumo Geral */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm border-b pb-4">
                 <div>
                   <div className="text-muted-foreground">Total Investido</div>
-                  <div className="font-semibold">{formatCurrency(totalInvestido)}</div>
+                  <div className="font-semibold text-lg">{formatCurrency(totalInvestido)}</div>
+                  <div className="text-xs text-muted-foreground">Meta: {formatCurrency(formData.valor_total)}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">Total %</div>
-                  <div className="font-semibold">{totalPercentuais.toFixed(2)}%</div>
+                  <div className="text-muted-foreground">Total Participação</div>
+                  <div className="font-semibold text-lg">{totalPercentuais.toFixed(2)}%</div>
+                  <div className="text-xs text-muted-foreground">Meta: 100%</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Rendimento Total</div>
+                  <div className="font-semibold text-lg text-primary">
+                    {formData.taxa_total > 0 ? formatCurrency(rendimentoTotal) : 'R$ 0,00'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{formData.taxa_total}% a.m.</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Status</div>
-                  <div className={`font-semibold ${
+                  <div className={`font-semibold text-lg ${
                     totalInvestido === formData.valor_total && Math.abs(totalPercentuais - 100) < 0.01
                       ? 'text-success' : 'text-destructive'
                   }`}>
@@ -414,45 +491,132 @@ const NewLoan = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Rendimento do Intermediador */}
+              {formData.taxa_intermediador > 0 && formData.intermediador_nome && (
+                <div className="bg-warning/10 border border-warning/20 p-3 rounded">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-medium text-warning-foreground">
+                        📋 {formData.intermediador_nome} (Intermediador)
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Taxa: {formData.taxa_intermediador}% do valor total
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg text-warning">
+                        {formatCurrency(rendimentoIntermediador)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">por mês</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Rendimento por Parceiro */}
+              {formData.parceiros.length > 0 && formData.valor_total > 0 && taxaInvestidores > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h5 className="font-medium">Rendimento dos Investidores ({taxaInvestidores.toFixed(2)}%)</h5>
+                    <div className="text-sm font-semibold text-success">
+                      Total: {formatCurrency(rendimentoInvestidores)}
+                    </div>
+                  </div>
+                  
+                  {formData.parceiros.map((parceiro, index) => {
+                    const rendimentoParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
+                    const participacaoReal = parceiro.valor_investido > 0 ? (parceiro.valor_investido / totalInvestido) * 100 : 0;
+                    
+                    return (
+                      <div key={index} className="bg-success/10 border border-success/20 p-3 rounded">
+                        <div className="flex justify-between items-center">
+                          <div className="flex-1">
+                            <div className="font-medium text-success-foreground">
+                              👤 {parceiro.nome_parceiro || `Parceiro #${index + 1}`}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Investiu: {formatCurrency(parceiro.valor_investido)} 
+                              ({participacaoReal.toFixed(1)}% do total)
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Participação nos lucros: {parceiro.percentual_participacao.toFixed(1)}%
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-bold text-lg text-success">
+                              {rendimentoParceiro > 0 ? formatCurrency(rendimentoParceiro) : 'R$ 0,00'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">por mês</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Avisos de Validação */}
+              {totalInvestido !== formData.valor_total && formData.valor_total > 0 && (
+                <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
+                  <div className="text-sm text-destructive font-medium">
+                    ⚠️ A soma dos valores investidos ({formatCurrency(totalInvestido)}) 
+                    deve ser igual ao valor total ({formatCurrency(formData.valor_total)})
+                  </div>
+                </div>
+              )}
+
+              {Math.abs(totalPercentuais - 100) > 0.01 && (
+                <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
+                  <div className="text-sm text-destructive font-medium">
+                    ⚠️ A soma dos percentuais de participação ({totalPercentuais.toFixed(2)}%) 
+                    deve ser igual a 100%
+                  </div>
+                </div>
+              )}
+
+              {/* Exemplo de Cálculo */}
+              {formData.valor_total > 0 && formData.taxa_total > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 rounded">
+                  <div className="text-sm">
+                    <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                      💡 Como funciona o cálculo:
+                    </div>
+                    <div className="text-blue-800 dark:text-blue-200 space-y-1">
+                      <div>• Valor emprestado: {formatCurrency(formData.valor_total)}</div>
+                      <div>• Taxa total: {formData.taxa_total}% = {formatCurrency(rendimentoTotal)}/mês</div>
+                      {formData.taxa_intermediador > 0 && (
+                        <div>• Intermediador: {formData.taxa_intermediador}% = {formatCurrency(rendimentoIntermediador)}/mês</div>
+                      )}
+                      <div>• Para investidores: {taxaInvestidores.toFixed(2)}% = {formatCurrency(rendimentoInvestidores)}/mês</div>
+                      <div className="text-xs opacity-75 mt-2">
+                        * Cada parceiro recebe conforme sua participação nos lucros dos investidores
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Resumo Financeiro */}
-        {formData.valor_total > 0 && formData.taxa_total > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Resumo Financeiro</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {formatCurrency(rendimentoTotal)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Rendimento Total</div>
-                </div>
-                
-                {formData.taxa_intermediador > 0 && (
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-warning">
-                      {formatCurrency(rendimentoIntermediador)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Intermediador</div>
-                  </div>
-                )}
-                
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-success">
-                    {formatCurrency(rendimentoInvestidores)}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Investidores</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Observações */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="space-y-2">
+              <Label htmlFor="observacoes">Observações</Label>
+              <Textarea
+                id="observacoes"
+                placeholder="Observações adicionais sobre o empréstimo..."
+                value={formData.observacoes}
+                onChange={(e) => handleInputChange('observacoes', e.target.value)}
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
+        {/* Botões */}
         <div className="flex gap-4">
           <Button
             type="button"
@@ -462,7 +626,11 @@ const NewLoan = () => {
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={loading} className="flex-1">
+          <Button
+            type="submit"
+            disabled={loading}
+            className="flex-1"
+          >
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
