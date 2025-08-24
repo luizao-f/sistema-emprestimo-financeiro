@@ -105,10 +105,25 @@ const Reports = () => {
       // Verificar se há pagamento no mês selecionado
       while (proximoPagamento <= fimMes && numeroMes < 120) { // limite de 120 parcelas (10 anos)
         if (proximoPagamento >= inicioMes && proximoPagamento <= fimMes) {
-          const rendimentoTotal = emprestimo.rendimento_total || emprestimo.rendimento_mensal || 0;
+          // CORREÇÃO: Calcular rendimento baseado na frequência de pagamento
+          const taxaMensal = emprestimo.taxa_mensal || 0;
           const taxaIntermediador = emprestimo.taxa_intermediador || 0;
-          const rendimentoIntermediador = (rendimentoTotal * taxaIntermediador) / 100;
-          const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
+          const taxaInvestidores = taxaMensal - taxaIntermediador;
+          
+          let rendimentoTotal = 0;
+          let mesesAcumulados = 1;
+          
+          // Calcular rendimento baseado no tipo de pagamento
+          if (tipoPagamento === 'trimestral') {
+            mesesAcumulados = 3;
+          } else if (tipoPagamento === 'anual') {
+            mesesAcumulados = 12;
+          }
+          
+          // O rendimento é sempre calculado como taxa mensal × meses acumulados
+          rendimentoTotal = emprestimo.valor_total * (taxaMensal / 100) * mesesAcumulados;
+          const rendimentoIntermediador = emprestimo.valor_total * (taxaIntermediador / 100) * mesesAcumulados;
+          const rendimentoInvestidores = emprestimo.valor_total * (taxaInvestidores / 100) * mesesAcumulados;
 
           const parcela: ParcelaCalculada = {
             id: `${emprestimo.id}-${numeroMes}`,
@@ -162,8 +177,10 @@ const Reports = () => {
     
     parcelasMes.forEach(parcela => {
       if (parcela.investidores && parcela.investidores.length > 0) {
+        // Usar os percentuais cadastrados dos investidores
         parcela.investidores.forEach((inv: any) => {
           const nome = inv.nome_parceiro;
+          // Calcular baseado no percentual de participação cadastrado
           const valorInvestidor = (parcela.rendimentoInvestidores * inv.percentual_participacao) / 100;
           
           if (!porInvestidor[nome]) {
@@ -176,6 +193,18 @@ const Reports = () => {
           }
           porInvestidor[nome].pendente = porInvestidor[nome].previsto - porInvestidor[nome].recebido;
         });
+      } else {
+        // Fallback para empréstimos sem investidores cadastrados - todos os investidores recebem
+        const nomeGenerico = "Investidores";
+        if (!porInvestidor[nomeGenerico]) {
+          porInvestidor[nomeGenerico] = { previsto: 0, recebido: 0, pendente: 0 };
+        }
+        
+        porInvestidor[nomeGenerico].previsto += parcela.rendimentoInvestidores;
+        if (parcela.status === 'pago') {
+          porInvestidor[nomeGenerico].recebido += parcela.rendimentoInvestidores;
+        }
+        porInvestidor[nomeGenerico].pendente = porInvestidor[nomeGenerico].previsto - porInvestidor[nomeGenerico].recebido;
       }
     });
 
@@ -331,13 +360,24 @@ const Reports = () => {
               Mês Anterior
             </Button>
             
-            <div className="text-center">
-              <h2 className="text-2xl font-bold">
-                {format(mesAtual, 'MMMM yyyy', { locale: ptBR })}
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Baseado nas datas de cadastro dos empréstimos
-              </p>
+            <div className="text-center flex items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold">
+                  {format(mesAtual, 'MMMM yyyy', { locale: ptBR })}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Baseado nas datas de cadastro dos empréstimos
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMesAtual(new Date())}
+                className="flex items-center gap-2"
+              >
+                <Calendar className="h-4 w-4" />
+                Hoje
+              </Button>
             </div>
             
             <Button
@@ -401,7 +441,7 @@ const Reports = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sua Parte</CardTitle>
+            <CardTitle className="text-sm font-medium">Intermediador</CardTitle>
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -493,7 +533,7 @@ const Reports = () => {
                         
                         {/* Intermediador */}
                         <div className="flex justify-between items-center py-2 border-b">
-                          <span className="text-sm">Intermediador ({parcela.taxaIntermediador}%)</span>
+                          <span className="text-sm">Intermediador ({parcela.taxaIntermediador}% mensal)</span>
                           <span className="font-bold text-purple-600">
                             {formatCurrency(parcela.rendimentoIntermediador)}
                           </span>
@@ -507,7 +547,7 @@ const Reports = () => {
                               return (
                                 <div key={index} className="flex justify-between items-center py-2">
                                   <span className="text-sm">
-                                    {investidor.nome_parceiro} ({investidor.percentual_participacao}%)
+                                    {investidor.nome_parceiro} ({investidor.percentual_participacao.toFixed(1)}%)
                                   </span>
                                   <span className="font-bold text-green-600">
                                     {formatCurrency(valorInvestidor)}
