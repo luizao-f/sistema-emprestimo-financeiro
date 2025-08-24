@@ -487,25 +487,12 @@ const Loans = () => {
                     variant="outline" 
                     size="sm" 
                     className="flex-1"
-                    onClick={() => {
-                      console.log('Dados do empréstimo:', {
-                        id: loan.id,
-                        devedor: loan.devedor,
-                        valor_total: loan.valor_total
-                      });
-                      
-                      // Opção 1: Mostrar toast informativo
-                      toast({
-                        title: "Funcionalidade em desenvolvimento",
-                        description: `Editar empréstimo de ${loan.devedor} - ID: ${loan.id}`,
-                      });
-                      
-                      // Opção 2: Se quiser implementar edição simples, descomente:
-                      // window.location.href = `/loans/new?edit=${loan.id}`;
-                    }}
+                    asChild
                   >
-                    <Edit className="w-4 h-4 mr-2" />
-                    Editar
+                    <Link to={`/loans/edit/${loan.id}`}>
+                      <Edit className="w-4 h-4 mr-2" />
+                      Editar
+                    </Link>
                   </Button>
                   <Button 
                     variant="destructive" 
