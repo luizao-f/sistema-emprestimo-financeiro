@@ -464,11 +464,19 @@ const Loans = () => {
 
                 {/* Botões de Ação */}
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" size="sm" className="flex-1" asChild>
-                    <Link to={`/loans/edit/${loan.id}`}>
-                      <Edit className="w-4 h-4 mr-2" />
-                      Editar
-                    </Link>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => {
+                      toast({
+                        title: "Funcionalidade em desenvolvimento",
+                        description: "A edição de empréstimos será implementada em breve.",
+                      });
+                    }}
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Editar
                   </Button>
                   <Button 
                     variant="destructive" 
