@@ -252,7 +252,7 @@ const Loans = () => {
                           <div key={parceiro.id || index} className="bg-success/5 border border-success/20 p-2 rounded text-xs">
                             <div className="flex justify-between items-center">
                               <div className="flex-1">
-                                <div className="font-medium text-success-foreground">
+                                <div className="font-medium text-green-800 dark:text-green-200">
                                   👤 {parceiro.nome_parceiro}
                                 </div>
                                 <div className="text-muted-foreground">

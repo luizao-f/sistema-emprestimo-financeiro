@@ -497,7 +497,7 @@ const NewLoan = () => {
                 <div className="bg-warning/10 border border-warning/20 p-3 rounded">
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="font-medium text-warning-foreground">
+                      <div className="font-medium text-yellow-800 dark:text-yellow-200">
                         📋 {formData.intermediador_nome} (Intermediador)
                       </div>
                       <div className="text-sm text-muted-foreground">
@@ -532,7 +532,7 @@ const NewLoan = () => {
                       <div key={index} className="bg-success/10 border border-success/20 p-3 rounded">
                         <div className="flex justify-between items-center">
                           <div className="flex-1">
-                            <div className="font-medium text-success-foreground">
+                           <div className="font-medium text-green-800 dark:text-green-200">
                               👤 {parceiro.nome_parceiro || `Parceiro #${index + 1}`}
                             </div>
                             <div className="text-sm text-muted-foreground">
