@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { StatusBadge } from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
 import { Emprestimo, LoanStatus } from '@/types/database';
@@ -17,9 +18,14 @@ import {
   Trash2,
   DollarSign,
   Users,
-  TrendingUp
+  TrendingUp,
+  Target,
+  Calendar,
+  Percent,
+  PieChart,
+  BarChart
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, differenceInMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const Loans = () => {
@@ -35,6 +41,17 @@ const Loans = () => {
       style: 'currency',
       currency: 'BRL',
     });
+  };
+
+  const formatPercent = (value: number) => {
+    return `${value.toFixed(2)}%`;
+  };
+
+  const calcularROI = (emprestimo: any) => {
+    const mesesPassados = differenceInMonths(new Date(), new Date(emprestimo.data_emprestimo));
+    const rendimentoTotal = (emprestimo.rendimento_total || emprestimo.rendimento_mensal || 0) * Math.max(mesesPassados, 1);
+    const roi = emprestimo.valor_total > 0 ? (rendimentoTotal / emprestimo.valor_total) * 100 : 0;
+    return { roi, mesesPassados, rendimentoAcumulado: rendimentoTotal };
   };
 
   const loadLoans = async () => {
@@ -112,6 +129,18 @@ const Loans = () => {
     loadLoans();
   }, []);
 
+  // Calcular estatísticas gerais
+  const statsGerais = {
+    totalEmprestado: filteredLoans.reduce((sum, loan) => sum + (loan.valor_total || 0), 0),
+    rendimentoMensalTotal: filteredLoans.reduce((sum, loan) => sum + (loan.rendimento_total || loan.rendimento_mensal || 0), 0),
+    emprestimosAtivos: filteredLoans.filter(loan => loan.status === 'ativo').length,
+    taxaMediaPonderada: 0
+  };
+
+  if (statsGerais.totalEmprestado > 0) {
+    statsGerais.taxaMediaPonderada = (statsGerais.rendimentoMensalTotal / statsGerais.totalEmprestado) * 100;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -125,7 +154,7 @@ const Loans = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Empréstimos</h1>
-          <p className="text-muted-foreground">Gerencie todos os seus empréstimos</p>
+          <p className="text-muted-foreground">Gerencie todos os seus empréstimos com análises detalhadas</p>
         </div>
         <Button asChild>
           <Link to="/loans/new">
@@ -133,6 +162,69 @@ const Loans = () => {
             Novo Empréstimo
           </Link>
         </Button>
+      </div>
+
+      {/* Estatísticas Gerais */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Capital Total</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">
+              {formatCurrency(statsGerais.totalEmprestado)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Em {filteredLoans.length} empréstimos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Rendimento Mensal</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(statsGerais.rendimentoMensalTotal)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {formatPercent(statsGerais.taxaMediaPonderada)} efetivo
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ativos</CardTitle>
+            <BarChart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {statsGerais.emprestimosAtivos}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              De {filteredLoans.length} total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
+            <PieChart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-600">
+              {filteredLoans.length > 0 ? formatCurrency(statsGerais.totalEmprestado / filteredLoans.length) : formatCurrency(0)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Por empréstimo
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -171,124 +263,182 @@ const Loans = () => {
           const rendimentoTotal = (loan.rendimento_total || loan.rendimento_mensal || 0);
           const rendimentoIntermediador = loan.rendimento_intermediador || 0;
           const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
+          const { roi, mesesPassados, rendimentoAcumulado } = calcularROI(loan);
           
           return (
-            <Card key={loan.id} className="hover:shadow-md transition-shadow">
+            <Card key={loan.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-primary">
               <CardHeader>
                 <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg">{loan.devedor}</CardTitle>
+                  <div className="flex-1">
+                    <CardTitle className="text-xl text-primary">{loan.devedor}</CardTitle>
+                    <CardDescription className="flex items-center gap-2 mt-1">
+                      <Calendar className="h-4 w-4" />
+                      Emprestado em {format(new Date(loan.data_emprestimo), 'dd/MM/yyyy', { locale: ptBR })}
+                      <Badge variant="outline" className="ml-2">
+                        {mesesPassados} meses
+                      </Badge>
+                    </CardDescription>
+                  </div>
                   <StatusBadge status={loan.status} />
                 </div>
-                <CardDescription>
-                  Emprestado em {format(new Date(loan.data_emprestimo), 'dd/MM/yyyy', { locale: ptBR })}
-                </CardDescription>
               </CardHeader>
+              
               <CardContent className="space-y-4">
-                {/* Informações Gerais */}
-                <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-3 rounded">
-                  <div>
-                    <span className="text-muted-foreground">Valor Total:</span>
-                    <p className="font-semibold text-lg">{formatCurrency(loan.valor_total)}</p>
+                {/* Métricas Principais */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-primary/10 rounded-lg">
+                    <div className="text-sm text-muted-foreground">Capital</div>
+                    <div className="text-lg font-bold text-primary">
+                      {formatCurrency(loan.valor_total)}
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Taxa Total:</span>
-                    <p className="font-semibold text-lg">{loan.taxa_total || loan.taxa_mensal}%</p>
+                  <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                    <div className="text-sm text-muted-foreground">Taxa</div>
+                    <div className="text-lg font-bold text-green-600">
+                      {loan.taxa_total || loan.taxa_mensal}%
+                    </div>
                   </div>
                 </div>
 
-                {/* Rendimento Total */}
-                <div className="text-center bg-primary/10 p-3 rounded">
-                  <div className="text-muted-foreground text-sm">Rendimento Mensal Total</div>
-                  <div className="text-xl font-bold text-primary">
-                    {formatCurrency(rendimentoTotal)}
+                {/* Rendimento e ROI */}
+                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium">Rendimento Mensal Total</span>
+                    <span className="text-lg font-bold text-success">
+                      {formatCurrency(rendimentoTotal)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">ROI Acumulado ({mesesPassados} meses)</span>
+                    <span className="font-bold text-blue-600">
+                      {formatPercent(roi)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm mt-1">
+                    <span className="text-muted-foreground">Rendimento Acumulado</span>
+                    <span className="font-bold text-green-600">
+                      {formatCurrency(rendimentoAcumulado)}
+                    </span>
                   </div>
                 </div>
 
                 {/* Intermediador */}
                 {loan.taxa_intermediador > 0 && loan.intermediador_nome && (
-                  <div className="bg-warning/10 border border-warning/20 p-3 rounded">
-                    <div className="flex items-center gap-2 mb-2">
-                      <TrendingUp className="w-4 h-4 text-warning" />
-                      <span className="font-medium text-sm">Intermediador</span>
+                  <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Target className="w-4 h-4 text-purple-600" />
+                      <span className="font-semibold text-sm text-purple-800 dark:text-purple-200">
+                        Intermediador
+                      </span>
                     </div>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Nome:</span>
-                        <span className="font-medium">{loan.intermediador_nome}</span>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium">{loan.intermediador_nome}</span>
+                        <Badge variant="secondary">{loan.taxa_intermediador}%</Badge>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Taxa:</span>
-                        <span className="font-medium">{loan.taxa_intermediador}%</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Rendimento:</span>
-                        <span className="font-bold text-warning">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Rendimento Mensal</span>
+                        <span className="font-bold text-purple-600">
                           {formatCurrency(rendimentoIntermediador)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Acumulado ({mesesPassados} meses)</span>
+                        <span className="font-bold text-purple-600">
+                          {formatCurrency(rendimentoIntermediador * mesesPassados)}
                         </span>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Parceiros/Investidores */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-success" />
-                    <span className="font-medium text-sm">
-                      Investidores ({taxaInvestidores.toFixed(1)}%)
-                    </span>
-                    <span className="ml-auto font-bold text-success text-sm">
-                      {formatCurrency(rendimentoInvestidores)}
-                    </span>
+                {/* Investidores */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-green-600" />
+                      <span className="font-semibold text-sm">
+                        Investidores ({formatPercent((taxaInvestidores / (loan.taxa_total || loan.taxa_mensal)) * 100)})
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-green-600 text-sm">
+                        {formatCurrency(rendimentoInvestidores)}/mês
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {formatCurrency(rendimentoInvestidores * mesesPassados)} acumulado
+                      </div>
+                    </div>
                   </div>
                   
                   {loan.emprestimo_parceiros && loan.emprestimo_parceiros.length > 0 ? (
                     <div className="space-y-2">
                       {loan.emprestimo_parceiros.map((parceiro: any, index: number) => {
-                        const rendimentoParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
-                        const percentualDoTotal = (parceiro.valor_investido / loan.valor_total) * 100;
+                        const rendimentoMensalParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
+                        const rendimentoAcumuladoParceiro = rendimentoMensalParceiro * mesesPassados;
+                        const roiParceiro = ((rendimentoAcumuladoParceiro / parceiro.valor_investido) * 100);
+                        const participacaoCapital = (parceiro.valor_investido / loan.valor_total) * 100;
                         
                         return (
-                          <div key={parceiro.id || index} className="bg-success/5 border border-success/20 p-2 rounded text-xs">
-                            <div className="flex justify-between items-center">
+                          <div key={parceiro.id || index} className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                            <div className="flex justify-between items-start mb-2">
                               <div className="flex-1">
-                                <div className="font-medium text-green-800 dark:text-green-200">
-                                  👤 {parceiro.nome_parceiro}
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-green-800 dark:text-green-200">
+                                    👤 {parceiro.nome_parceiro}
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {formatPercent(participacaoCapital)} do capital
+                                  </Badge>
                                 </div>
-                                <div className="text-muted-foreground">
-                                  {formatCurrency(parceiro.valor_investido)} ({percentualDoTotal.toFixed(1)}% do total)
-                                </div>
-                                <div className="text-muted-foreground">
-                                  Participação nos lucros: {parceiro.percentual_participacao.toFixed(1)}%
+                                <div className="text-sm text-muted-foreground mt-1">
+                                  Capital: {formatCurrency(parceiro.valor_investido)} • 
+                                  Participação: {formatPercent(parceiro.percentual_participacao)}
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <div className="font-bold text-success">
-                                  {formatCurrency(rendimentoParceiro)}
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 text-sm">
+                              <div>
+                                <div className="text-muted-foreground">Mensal</div>
+                                <div className="font-bold text-green-600">
+                                  {formatCurrency(rendimentoMensalParceiro)}
                                 </div>
-                                <div className="text-muted-foreground">por mês</div>
                               </div>
+                              <div>
+                                <div className="text-muted-foreground">Acumulado</div>
+                                <div className="font-bold text-green-600">
+                                  {formatCurrency(rendimentoAcumuladoParceiro)}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-green-200 dark:border-green-800">
+                              <span className="text-sm text-muted-foreground">ROI</span>
+                              <span className="font-bold text-green-700 dark:text-green-300">
+                                {formatPercent(roiParceiro)}
+                              </span>
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    // Fallback para empréstimos antigos sem parceiros detalhados
-                    <div className="bg-success/5 border border-success/20 p-2 rounded text-xs">
-                      <div className="grid grid-cols-2 gap-2">
+                    // Fallback para empréstimos antigos
+                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <div className="text-muted-foreground">Sua Parte:</div>
+                          <div className="text-muted-foreground">Sua Parte</div>
                           <div className="font-semibold">{formatCurrency(loan.valor_seu || 0)}</div>
-                          <div className="text-success font-bold">
-                            {formatCurrency(loan.seu_rendimento || 0)}
+                          <div className="font-bold text-success">
+                            {formatCurrency(loan.seu_rendimento || 0)}/mês
                           </div>
                         </div>
                         <div>
-                          <div className="text-muted-foreground">Parceiro:</div>
+                          <div className="text-muted-foreground">Parceiro</div>
                           <div className="font-semibold">{formatCurrency(loan.valor_parceiro || 0)}</div>
-                          <div className="text-success font-bold">
-                            {formatCurrency(loan.parceiro_rendimento || 0)}
+                          <div className="font-bold text-success">
+                            {formatCurrency(loan.parceiro_rendimento || 0)}/mês
                           </div>
                         </div>
                       </div>
@@ -296,16 +446,35 @@ const Loans = () => {
                   )}
                 </div>
 
+                {/* Informações Adicionais */}
+                <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between items-center text-sm text-muted-foreground">
+                    <span>Tipo de Pagamento</span>
+                    <Badge variant="outline">
+                      {loan.tipo_pagamento || 'Mensal'}
+                    </Badge>
+                  </div>
+                  {loan.observacoes && (
+                    <div className="mt-2 text-sm">
+                      <span className="text-muted-foreground">Obs: </span>
+                      <span className="text-foreground">{loan.observacoes}</span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Botões de Ação */}
                 <div className="flex gap-2 pt-2">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    <Edit className="w-4 h-4 mr-2" />
-                    Editar
+                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                    <Link to={`/loans/edit/${loan.id}`}>
+                      <Edit className="w-4 h-4 mr-2" />
+                      Editar
+                    </Link>
                   </Button>
                   <Button 
                     variant="destructive" 
                     size="sm" 
                     onClick={() => handleDelete(loan.id)}
+                    className="px-3"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
