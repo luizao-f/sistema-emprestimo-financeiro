@@ -14,16 +14,157 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      emprestimos: {
+        Row: {
+          created_at: string | null
+          data_emprestimo: string
+          data_vencimento: string | null
+          devedor: string
+          id: string
+          observacoes: string | null
+          parceiro_percentual: number | null
+          parceiro_rendimento: number | null
+          rendimento_mensal: number | null
+          seu_percentual: number | null
+          seu_rendimento: number | null
+          status: Database["public"]["Enums"]["loan_status"] | null
+          taxa_mensal: number
+          tipo_pagamento: Database["public"]["Enums"]["payment_type"]
+          valor_parceiro: number
+          valor_seu: number
+          valor_total: number
+        }
+        Insert: {
+          created_at?: string | null
+          data_emprestimo: string
+          data_vencimento?: string | null
+          devedor: string
+          id?: string
+          observacoes?: string | null
+          parceiro_percentual?: number | null
+          parceiro_rendimento?: number | null
+          rendimento_mensal?: number | null
+          seu_percentual?: number | null
+          seu_rendimento?: number | null
+          status?: Database["public"]["Enums"]["loan_status"] | null
+          taxa_mensal: number
+          tipo_pagamento: Database["public"]["Enums"]["payment_type"]
+          valor_parceiro: number
+          valor_seu: number
+          valor_total: number
+        }
+        Update: {
+          created_at?: string | null
+          data_emprestimo?: string
+          data_vencimento?: string | null
+          devedor?: string
+          id?: string
+          observacoes?: string | null
+          parceiro_percentual?: number | null
+          parceiro_rendimento?: number | null
+          rendimento_mensal?: number | null
+          seu_percentual?: number | null
+          seu_rendimento?: number | null
+          status?: Database["public"]["Enums"]["loan_status"] | null
+          taxa_mensal?: number
+          tipo_pagamento?: Database["public"]["Enums"]["payment_type"]
+          valor_parceiro?: number
+          valor_seu?: number
+          valor_total?: number
+        }
+        Relationships: []
+      }
+      recebimentos: {
+        Row: {
+          created_at: string | null
+          data_recebimento: string | null
+          data_vencimento: string
+          emprestimo_id: string | null
+          id: string
+          observacoes: string | null
+          parceiro_valor: number
+          seu_valor: number
+          status: Database["public"]["Enums"]["payment_status"] | null
+          valor_esperado: number
+          valor_recebido: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          data_recebimento?: string | null
+          data_vencimento: string
+          emprestimo_id?: string | null
+          id?: string
+          observacoes?: string | null
+          parceiro_valor: number
+          seu_valor: number
+          status?: Database["public"]["Enums"]["payment_status"] | null
+          valor_esperado: number
+          valor_recebido?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          data_recebimento?: string | null
+          data_vencimento?: string
+          emprestimo_id?: string | null
+          id?: string
+          observacoes?: string | null
+          parceiro_valor?: number
+          seu_valor?: number
+          status?: Database["public"]["Enums"]["payment_status"] | null
+          valor_esperado?: number
+          valor_recebido?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recebimentos_emprestimo_id_fkey"
+            columns: ["emprestimo_id"]
+            isOneToOne: false
+            referencedRelation: "emprestimos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socios: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          id: string
+          nome: string
+          participacao_padrao: number | null
+          telefone: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          nome: string
+          participacao_padrao?: number | null
+          telefone?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          nome?: string
+          participacao_padrao?: number | null
+          telefone?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      update_payment_status: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      loan_status: "ativo" | "pendente" | "finalizado"
+      payment_status: "pendente" | "pago" | "atrasado"
+      payment_type: "mensal" | "trimestral" | "anual"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +291,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      loan_status: ["ativo", "pendente", "finalizado"],
+      payment_status: ["pendente", "pago", "atrasado"],
+      payment_type: ["mensal", "trimestral", "anual"],
+    },
   },
 } as const
