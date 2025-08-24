@@ -60,13 +60,32 @@ const Loans = () => {
       const { data, error } = await supabase
         .from('emprestimos')
         .select(`
-          *,
+          id,
+          devedor,
+          valor_total,
+          taxa_mensal,
+          taxa_total,
+          taxa_intermediador,
+          intermediador_nome,
+          rendimento_mensal,
+          rendimento_total,
+          rendimento_intermediador,
+          data_emprestimo,
+          tipo_pagamento,
+          status,
+          observacoes,
+          valor_seu,
+          valor_parceiro,
+          seu_rendimento,
+          parceiro_rendimento,
+          created_at,
           emprestimo_parceiros:emprestimo_parceiros(*)
         `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
+      console.log('Empréstimos carregados:', data);
       setLoans(data || []);
       setFilteredLoans(data || []);
     } catch (error: any) {
@@ -469,10 +488,20 @@ const Loans = () => {
                     size="sm" 
                     className="flex-1"
                     onClick={() => {
+                      console.log('Dados do empréstimo:', {
+                        id: loan.id,
+                        devedor: loan.devedor,
+                        valor_total: loan.valor_total
+                      });
+                      
+                      // Opção 1: Mostrar toast informativo
                       toast({
                         title: "Funcionalidade em desenvolvimento",
-                        description: "A edição de empréstimos será implementada em breve.",
+                        description: `Editar empréstimo de ${loan.devedor} - ID: ${loan.id}`,
                       });
+                      
+                      // Opção 2: Se quiser implementar edição simples, descomente:
+                      // window.location.href = `/loans/new?edit=${loan.id}`;
                     }}
                   >
                     <Edit className="w-4 h-4 mr-2" />
@@ -481,7 +510,10 @@ const Loans = () => {
                   <Button 
                     variant="destructive" 
                     size="sm" 
-                    onClick={() => handleDelete(loan.id)}
+                    onClick={() => {
+                      console.log('Deletar empréstimo ID:', loan.id);
+                      handleDelete(loan.id);
+                    }}
                     className="px-3"
                   >
                     <Trash2 className="w-4 h-4" />
