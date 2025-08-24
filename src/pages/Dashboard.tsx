@@ -66,9 +66,11 @@ const Dashboard = () => {
       if (paymentsError) throw paymentsError;
 
       // Calculate stats
+          // Na função loadDashboardData, substituir os cálculos:
       const activeLoans = loans?.filter(loan => loan.status === 'ativo') || [];
       const totalEmprestado = activeLoans.reduce((sum, loan) => sum + (loan.valor_total || 0), 0);
-      const rendimentoMensal = activeLoans.reduce((sum, loan) => sum + (loan.rendimento_mensal || 0), 0);
+      // Usar rendimento_total em vez de rendimento_mensal:
+      const rendimentoMensal = activeLoans.reduce((sum, loan) => sum + (loan.rendimento_total || loan.rendimento_mensal || 0), 0);
       const emprestimosAtivos = activeLoans.length;
 
       // Get upcoming payments (next 30 days)

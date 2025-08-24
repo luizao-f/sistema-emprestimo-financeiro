@@ -40,7 +40,10 @@ const Loans = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('emprestimos')
-        .select('*')
+        .select(`
+          *,
+          emprestimo_parceiros:emprestimo_parceiros(*)
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
