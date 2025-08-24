@@ -223,26 +223,25 @@ const LoanEdit = () => {
       
       const { rendimentoTotal, rendimentoIntermediador } = calcularRendimentos();
       
-      const emprestimoAtualizado = {
+      // Lista apenas os campos seguros para atualização
+      const camposPermitidos = {
         devedor: emprestimo.devedor,
         valor_total: emprestimo.valor_total,
         taxa_mensal: emprestimo.taxa_mensal,
-        taxa_total: emprestimo.taxa_mensal,
-        taxa_intermediador: emprestimo.taxa_intermediador,
-        intermediador_nome: emprestimo.intermediador_nome,
-        rendimento_total: rendimentoTotal,
-        rendimento_intermediador: rendimentoIntermediador,
+        taxa_intermediador: emprestimo.taxa_intermediador || 0,
+        intermediador_nome: emprestimo.intermediador_nome || '',
         data_emprestimo: emprestimo.data_emprestimo,
-        tipo_pagamento: emprestimo.tipo_pagamento,
-        status: emprestimo.status,
-        observacoes: emprestimo.observacoes
-        // Removido rendimento_mensal que parece ser calculado automaticamente
+        tipo_pagamento: emprestimo.tipo_pagamento || 'mensal',
+        status: emprestimo.status || 'ativo',
+        observacoes: emprestimo.observacoes || ''
       };
 
-      // Atualizar empréstimo
+      console.log('Campos para atualizar:', camposPermitidos);
+
+      // Atualizar apenas campos seguros
       const { error: emprestimoError } = await supabase
         .from('emprestimos')
-        .update(emprestimoAtualizado)
+        .update(camposPermitidos)
         .eq('id', id);
 
       if (emprestimoError) throw emprestimoError;
