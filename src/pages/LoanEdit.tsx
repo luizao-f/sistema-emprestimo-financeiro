@@ -41,6 +41,7 @@ interface EmprestimoData {
   rendimento_total?: number;
   rendimento_intermediador: number;
   data_emprestimo: string;
+  data_vencimento?: string;
   tipo_pagamento: string;
   status: string;
   observacoes?: string;
@@ -67,6 +68,7 @@ const LoanEdit = () => {
     rendimento_mensal: 0,
     rendimento_intermediador: 0,
     data_emprestimo: new Date().toISOString().split('T')[0],
+    data_vencimento: '',
     tipo_pagamento: 'mensal',
     status: 'ativo',
     observacoes: ''
@@ -110,7 +112,9 @@ const LoanEdit = () => {
         ...emprestimoData,
         data_emprestimo: emprestimoData.data_emprestimo ? 
           emprestimoData.data_emprestimo.split('T')[0] : 
-          new Date().toISOString().split('T')[0]
+          new Date().toISOString().split('T')[0],
+        data_vencimento: emprestimoData.data_vencimento ? 
+          emprestimoData.data_vencimento.split('T')[0] : ''
       });
 
       setParceiros(parceirosData || []);
@@ -231,6 +235,7 @@ const LoanEdit = () => {
         taxa_intermediador: emprestimo.taxa_intermediador || 0,
         intermediador_nome: emprestimo.intermediador_nome || '',
         data_emprestimo: emprestimo.data_emprestimo,
+        data_vencimento: emprestimo.data_vencimento || null,
         tipo_pagamento: emprestimo.tipo_pagamento || 'mensal',
         status: emprestimo.status || 'ativo',
         observacoes: emprestimo.observacoes || ''
@@ -456,6 +461,18 @@ const LoanEdit = () => {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="data_vencimento">Data de Vencimento</Label>
+                <Input
+                  id="data_vencimento"
+                  type="date"
+                  value={emprestimo.data_vencimento || ''}
+                  onChange={(e) => setEmprestimo({...emprestimo, data_vencimento: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label htmlFor="tipo_pagamento">Tipo de Pagamento</Label>
                 <Select 
                   value={emprestimo.tipo_pagamento} 
@@ -471,23 +488,22 @@ const LoanEdit = () => {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select 
-                value={emprestimo.status} 
-                onValueChange={(value) => setEmprestimo({...emprestimo, status: value})}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="pendente">Pendente</SelectItem>
-                  <SelectItem value="finalizado">Finalizado</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select 
+                  value={emprestimo.status} 
+                  onValueChange={(value) => setEmprestimo({...emprestimo, status: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="finalizado">Finalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
