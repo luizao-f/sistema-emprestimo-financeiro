@@ -36,7 +36,7 @@ const NewLoan = () => {
     ]
   });
 
-  // Funções de formatação
+  // Funções de formatação melhoradas
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
       style: 'currency',
@@ -47,30 +47,45 @@ const NewLoan = () => {
   };
 
   const formatarValorMonetario = (valor: string) => {
+    // Remove tudo que não for dígito
     const apenasNumeros = valor.replace(/\D/g, '');
+    
+    // Se estiver vazio, retorna 0
+    if (!apenasNumeros) return 0;
+    
+    // Converte para número (centavos) e depois para reais
     const numero = parseInt(apenasNumeros) || 0;
     const reais = numero / 100;
+    
     return reais;
   };
 
   const formatarPercentual = (valor: string) => {
-    let numeros = valor.replace(/[^\d.,]/g, '');
-    numeros = numeros.replace(',', '.');
+    // Remove tudo que não for dígito
+    const apenasNumeros = valor.replace(/\D/g, '');
     
-    const partes = numeros.split('.');
-    if (partes[1] && partes[1].length > 2) {
-      numeros = partes[0] + '.' + partes[1].substring(0, 2);
-    }
+    // Se estiver vazio, retorna 0
+    if (!apenasNumeros) return 0;
     
-    const numero = parseFloat(numeros) || 0;
-    return Math.min(numero, 100);
+    // Converte para número com 2 casas decimais
+    const numero = parseInt(apenasNumeros) || 0;
+    const percentual = numero / 100;
+    
+    // Limita a 100%
+    return Math.min(percentual, 100);
   };
 
   const exibirValorFormatado = (valor: number) => {
+    if (valor === 0) return '';
     return valor.toLocaleString('pt-BR', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
+  };
+
+  const exibirPercentualFormatado = (valor: number) => {
+    if (valor === 0) return '';
+    return valor.toFixed(2).replace('.', ',');
   };
 
   const handleInputChange = (field: string, value: any) => {
@@ -310,13 +325,6 @@ const NewLoan = () => {
                   const valorFormatado = formatarValorMonetario(e.target.value);
                   handleInputChange('valor_total', valorFormatado);
                 }}
-                onFocus={(e) => e.target.select()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Backspace' || e.key === 'Delete') {
-                    e.preventDefault();
-                    handleInputChange('valor_total', 0);
-                  }
-                }}
                 required
               />
             </div>
@@ -328,17 +336,10 @@ const NewLoan = () => {
                   id="taxa_total"
                   type="text"
                   placeholder="3,00"
-                  value={formData.taxa_total.toFixed(2).replace('.', ',')}
+                  value={exibirPercentualFormatado(formData.taxa_total)}
                   onChange={(e) => {
                     const percentualFormatado = formatarPercentual(e.target.value);
                     handleInputChange('taxa_total', percentualFormatado);
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Backspace' || e.key === 'Delete') {
-                      e.preventDefault();
-                      handleInputChange('taxa_total', 0);
-                    }
                   }}
                   required
                 />
@@ -349,17 +350,10 @@ const NewLoan = () => {
                   id="taxa_intermediador"
                   type="text"
                   placeholder="1,00"
-                  value={formData.taxa_intermediador.toFixed(2).replace('.', ',')}
+                  value={exibirPercentualFormatado(formData.taxa_intermediador)}
                   onChange={(e) => {
                     const percentualFormatado = formatarPercentual(e.target.value);
                     handleInputChange('taxa_intermediador', percentualFormatado);
-                  }}
-                  onFocus={(e) => e.target.select()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Backspace' || e.key === 'Delete') {
-                      e.preventDefault();
-                      handleInputChange('taxa_intermediador', 0);
-                    }
                   }}
                 />
               </div>
@@ -486,13 +480,6 @@ const NewLoan = () => {
                         const valorFormatado = formatarValorMonetario(e.target.value);
                         handleParceiroChange(index, 'valor_investido', valorFormatado);
                       }}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' || e.key === 'Delete') {
-                          e.preventDefault();
-                          handleParceiroChange(index, 'valor_investido', 0);
-                        }
-                      }}
                       required
                     />
                   </div>
@@ -501,17 +488,10 @@ const NewLoan = () => {
                     <Input
                       type="text"
                       placeholder="0,00"
-                      value={parceiro.percentual_participacao.toFixed(2).replace('.', ',')}
+                      value={exibirPercentualFormatado(parceiro.percentual_participacao)}
                       onChange={(e) => {
                         const percentualFormatado = formatarPercentual(e.target.value);
                         handleParceiroChange(index, 'percentual_participacao', percentualFormatado);
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Backspace' || e.key === 'Delete') {
-                          e.preventDefault();
-                          handleParceiroChange(index, 'percentual_participacao', 0);
-                        }
                       }}
                       required
                     />
