@@ -55,6 +55,7 @@ const Reports = () => {
   const [emprestimos, setEmprestimos] = useState<any[]>([]);
   const [pagamentosRecebidos, setPagamentosRecebidos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [salvandoPagamento, setSalvandoPagamento] = useState(false);
   const [modalPagamento, setModalPagamento] = useState<{
     aberto: boolean;
     parcela: ParcelaCalculada | null;
@@ -342,6 +343,9 @@ const Reports = () => {
 
       setModalPagamento({ aberto: false, parcela: null });
       setValorPagamento('');
+      
+      // Recarregar dados após registrar pagamento
+      await loadData();
       loadData(); // Recarregar dados
 
     } catch (error: any) {
