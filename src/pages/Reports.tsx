@@ -143,12 +143,15 @@ const Reports = () => {
           const jaRecebido = pagamentosRecebidos.find(p => 
             p.emprestimo_id === emprestimo.id && 
             new Date(p.data_vencimento).getMonth() === proximoPagamento.getMonth() &&
-            new Date(p.data_vencimento).getFullYear() === proximoPagamento.getFullYear() &&
-            p.status === 'pago'
+            new Date(p.data_vencimento).getFullYear() === proximoPagamento.getFullYear()
           );
 
           if (jaRecebido) {
-            parcela.status = 'pago';
+            if (jaRecebido.status === 'pago') {
+              parcela.status = 'pago';
+            } else if (jaRecebido.status === 'parcial') {
+              parcela.status = 'parcial';
+            }
           } else if (proximoPagamento < new Date()) {
             parcela.status = 'atrasado';
           }
@@ -274,10 +277,18 @@ const Reports = () => {
       const valor = parseFloat(valorPagamento);
       const parcela = modalPagamento.parcela;
 
+      // Determinar o status baseado no valor pago
+      let novoStatus = 'pendente';
+      if (valor >= parcela.valor) {
+        novoStatus = 'pago';
+      } else if (valor > 0) {
+        novoStatus = 'parcial';
+      }
+
       // Verificar se já existe um registro para este empréstimo e data
       const { data: existingPayment } = await supabase
         .from('recebimentos')
-        .select('id')
+        .select('*')
         .eq('emprestimo_id', parcela.emprestimoId)
         .eq('data_vencimento', parcela.dataVencimento.toISOString())
         .single();
@@ -285,15 +296,18 @@ const Reports = () => {
       let error;
       
       if (existingPayment) {
-        // Atualizar registro existente
+        // Se já existe, somar com o valor anterior
+        const novoValorTotal = (existingPayment.valor_recebido || 0) + valor;
+        const novoStatusFinal = novoValorTotal >= parcela.valor ? 'pago' : 'parcial';
+        
         const { error: updateError } = await supabase
           .from('recebimentos')
           .update({
-            valor_recebido: valor,
-            status: 'pago',
+            valor_recebido: novoValorTotal,
+            status: novoStatusFinal,
             seu_valor: parcela.rendimentoIntermediador,
             parceiro_valor: parcela.rendimentoInvestidores,
-            observacoes: `Pagamento atualizado em ${new Date().toLocaleDateString('pt-BR')}`
+            observacoes: `${existingPayment.observacoes || ''}\nPagamento adicional de ${formatCurrency(valor)} em ${new Date().toLocaleDateString('pt-BR')}. Total: ${formatCurrency(novoValorTotal)}`
           })
           .eq('id', existingPayment.id);
         
@@ -307,10 +321,10 @@ const Reports = () => {
             data_vencimento: parcela.dataVencimento.toISOString(),
             valor_esperado: parcela.valor,
             valor_recebido: valor,
-            status: 'pago',
+            status: novoStatus,
             seu_valor: parcela.rendimentoIntermediador,
             parceiro_valor: parcela.rendimentoInvestidores,
-            observacoes: `Pagamento registrado em ${new Date().toLocaleDateString('pt-BR')}`
+            observacoes: `Pagamento ${novoStatus === 'parcial' ? 'parcial' : 'completo'} registrado em ${new Date().toLocaleDateString('pt-BR')}`
           });
         
         error = insertError;
@@ -340,6 +354,8 @@ const Reports = () => {
     switch (status) {
       case 'pago':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
+      case 'parcial':
+        return <Clock className="h-5 w-5 text-blue-500" />;
       case 'atrasado':
         return <XCircle className="h-5 w-5 text-red-500" />;
       default:
@@ -350,11 +366,19 @@ const Reports = () => {
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
       'pago': 'default',
+      'parcial': 'secondary',
       'atrasado': 'destructive',
       'pendente': 'secondary'
     };
     
-    return <Badge variant={variants[status] || 'secondary'}>{status.toUpperCase()}</Badge>;
+    const labels: Record<string, string> = {
+      'pago': 'PAGO',
+      'parcial': 'PARCIAL',
+      'atrasado': 'ATRASADO',
+      'pendente': 'PENDENTE'
+    };
+    
+    return <Badge variant={variants[status] || 'secondary'}>{labels[status] || status.toUpperCase()}</Badge>;
   };
 
   useEffect(() => {
