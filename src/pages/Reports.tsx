@@ -274,22 +274,47 @@ const Reports = () => {
       const valor = parseFloat(valorPagamento);
       const parcela = modalPagamento.parcela;
 
-      // Inserir ou atualizar recebimento
-      const { error } = await supabase
+      // Verificar se já existe um registro para este empréstimo e data
+      const { data: existingPayment } = await supabase
         .from('recebimentos')
-        .upsert({
-          emprestimo_id: parcela.emprestimoId,
-          data_vencimento: parcela.dataVencimento.toISOString(),
-          valor_esperado: parcela.valor,
-          valor_recebido: valor,
-          status: 'pago',
-          // Distribuir valores conforme configuração
-          seu_valor: parcela.rendimentoIntermediador,
-          parceiro_valor: parcela.rendimentoInvestidores,
-          observacoes: `Pagamento registrado em ${new Date().toLocaleDateString('pt-BR')}`
-        }, {
-          onConflict: 'emprestimo_id,data_vencimento'
-        });
+        .select('id')
+        .eq('emprestimo_id', parcela.emprestimoId)
+        .eq('data_vencimento', parcela.dataVencimento.toISOString())
+        .single();
+
+      let error;
+      
+      if (existingPayment) {
+        // Atualizar registro existente
+        const { error: updateError } = await supabase
+          .from('recebimentos')
+          .update({
+            valor_recebido: valor,
+            status: 'pago',
+            seu_valor: parcela.rendimentoIntermediador,
+            parceiro_valor: parcela.rendimentoInvestidores,
+            observacoes: `Pagamento atualizado em ${new Date().toLocaleDateString('pt-BR')}`
+          })
+          .eq('id', existingPayment.id);
+        
+        error = updateError;
+      } else {
+        // Inserir novo registro
+        const { error: insertError } = await supabase
+          .from('recebimentos')
+          .insert({
+            emprestimo_id: parcela.emprestimoId,
+            data_vencimento: parcela.dataVencimento.toISOString(),
+            valor_esperado: parcela.valor,
+            valor_recebido: valor,
+            status: 'pago',
+            seu_valor: parcela.rendimentoIntermediador,
+            parceiro_valor: parcela.rendimentoInvestidores,
+            observacoes: `Pagamento registrado em ${new Date().toLocaleDateString('pt-BR')}`
+          });
+        
+        error = insertError;
+      }
 
       if (error) throw error;
 
