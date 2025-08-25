@@ -1,220 +1,363 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { StatusBadge } from '@/components/StatusBadge';
 import { supabase } from '@/integrations/supabase/client';
-import { Emprestimo, LoanStatus } from '@/types/database';
 import { useToast } from '@/hooks/use-toast';
 import { 
-  Plus, 
-  Search, 
-  Filter,
+  ArrowLeft,
+  Save,
   Loader2,
-  Edit,
+  Plus,
   Trash2,
-  DollarSign,
   Users,
-  TrendingUp,
-  Target,
-  Calendar,
+  DollarSign,
   Percent,
-  PieChart,
-  BarChart,
-  X,
-  UserCheck
+  Calendar
 } from 'lucide-react';
-import { format, differenceInMonths } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format } from 'date-fns';
 
-const Loans = () => {
-  const [loans, setLoans] = useState<any[]>([]);
-  const [filteredLoans, setFilteredLoans] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all'>('all');
-  const [investidorFilter, setInvestidorFilter] = useState<string>('');
-  const [devedorFilter, setDevedorFilter] = useState<string>('');
+interface Parceiro {
+  id?: string;
+  nome_parceiro: string;
+  valor_investido: number;
+  percentual_participacao: number;
+}
+
+interface EmprestimoData {
+  id?: string;
+  devedor: string;
+  valor_total: number;
+  taxa_mensal: number;
+  taxa_total?: number;
+  taxa_intermediador: number;
+  intermediador_nome: string;
+  rendimento_mensal: number;
+  rendimento_total?: number;
+  rendimento_intermediador: number;
+  data_emprestimo: string;
+  data_vencimento?: string;
+  tipo_pagamento: string;
+  status: string;
+  observacoes?: string;
+  // Campos legados
+  valor_seu?: number;
+  valor_parceiro?: number;
+  seu_rendimento?: number;
+  parceiro_rendimento?: number;
+}
+
+const LoanEdit = () => {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
-
-  // Hook para capturar filtros do Dashboard
-  const location = useLocation();
-  const filtroInvestidorDashboard = location.state?.filtroInvestidor;
-  const filtroDevedorDashboard = location.state?.filtroDevedor;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  const [emprestimo, setEmprestimo] = useState<EmprestimoData>({
+    devedor: '',
+    valor_total: 0,
+    taxa_mensal: 0,
+    taxa_intermediador: 0,
+    intermediador_nome: '',
+    rendimento_mensal: 0,
+    rendimento_intermediador: 0,
+    data_emprestimo: new Date().toISOString().split('T')[0],
+    data_vencimento: '',
+    tipo_pagamento: 'mensal',
+    status: 'ativo',
+    observacoes: ''
+  });
+  
+  const [parceiros, setParceiros] = useState<Parceiro[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
     });
   };
 
-  const formatPercent = (value: number) => {
-    return `${Math.round(value * 100) / 100}%`;
-  };
+  const loadEmprestimo = async () => {
+    if (!id) return;
 
-  const calcularROI = (emprestimo: any) => {
-    const mesesPassados = differenceInMonths(new Date(), new Date(emprestimo.data_emprestimo));
-    const rendimentoTotal = (emprestimo.rendimento_total || emprestimo.rendimento_mensal || 0) * Math.max(mesesPassados, 1);
-    const roi = emprestimo.valor_total > 0 ? (rendimentoTotal / emprestimo.valor_total) * 100 : 0;
-    return { roi, mesesPassados, rendimentoAcumulado: rendimentoTotal };
-  };
-
-  const loadLoans = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('emprestimos')
-        .select(`
-          id,
-          devedor,
-          valor_total,
-          taxa_mensal,
-          taxa_total,
-          taxa_intermediador,
-          intermediador_nome,
-          rendimento_mensal,
-          rendimento_total,
-          rendimento_intermediador,
-          data_emprestimo,
-          data_vencimento,
-          tipo_pagamento,
-          status,
-          observacoes,
-          valor_seu,
-          valor_parceiro,
-          seu_rendimento,
-          parceiro_rendimento,
-          created_at,
-          emprestimo_parceiros:emprestimo_parceiros(*)
-        `)
-        .order('created_at', { ascending: false });
+      setIsEditMode(true);
 
-      if (error) throw error;
-      
-      console.log('Empréstimos carregados:', data);
-      setLoans(data || []);
+      // Carregar dados do empréstimo
+      const { data: emprestimoData, error: emprestimoError } = await supabase
+        .from('emprestimos')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (emprestimoError) throw emprestimoError;
+
+      // Carregar parceiros
+      const { data: parceirosData, error: parceirosError } = await supabase
+        .from('emprestimo_parceiros')
+        .select('*')
+        .eq('emprestimo_id', id);
+
+      if (parceirosError) throw parceirosError;
+
+      setEmprestimo({
+        ...emprestimoData,
+        data_emprestimo: emprestimoData.data_emprestimo ? 
+          emprestimoData.data_emprestimo.split('T')[0] : 
+          new Date().toISOString().split('T')[0],
+        data_vencimento: emprestimoData.data_vencimento ? 
+          emprestimoData.data_vencimento.split('T')[0] : ''
+      });
+
+      setParceiros(parceirosData || []);
+
     } catch (error: any) {
       toast({
-        title: "Erro ao carregar empréstimos",
+        title: "Erro ao carregar empréstimo",
         description: error.message,
         variant: "destructive",
       });
+      navigate('/loans');
     } finally {
       setLoading(false);
     }
   };
 
-  // Aplicar filtros vindos do Dashboard
-  useEffect(() => {
-    if (filtroInvestidorDashboard) {
-      setInvestidorFilter(filtroInvestidorDashboard);
-      console.log('Filtro de investidor aplicado:', filtroInvestidorDashboard);
+  const calcularRendimentos = () => {
+    const taxaTotal = emprestimo.taxa_mensal || 0;
+    const taxaIntermediador = emprestimo.taxa_intermediador || 0;
+    const taxaInvestidores = taxaTotal - taxaIntermediador;
+    
+    const rendimentoTotal = (emprestimo.valor_total * taxaTotal) / 100;
+    const rendimentoIntermediador = (emprestimo.valor_total * taxaIntermediador) / 100;
+    const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
+
+    return {
+      rendimentoTotal,
+      rendimentoIntermediador,
+      rendimentoInvestidores,
+      taxaInvestidores
+    };
+  };
+
+  const adicionarParceiro = () => {
+    setParceiros([...parceiros, {
+      nome_parceiro: '',
+      valor_investido: 0,
+      percentual_participacao: 0
+    }]);
+  };
+
+  const removerParceiro = (index: number) => {
+    setParceiros(parceiros.filter((_, i) => i !== index));
+  };
+
+  const atualizarParceiro = (index: number, campo: keyof Parceiro, valor: any) => {
+    const novosParceiros = [...parceiros];
+    novosParceiros[index] = { ...novosParceiros[index], [campo]: valor };
+    setParceiros(novosParceiros);
+  };
+
+  const calcularPercentuais = () => {
+    const totalInvestido = parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0);
+    if (totalInvestido === 0) return;
+
+    let somatorioPercentuais = 0;
+    const novosPerceiros = parceiros.map((parceiro, index) => {
+      const percentual = ((parceiro.valor_investido || 0) / totalInvestido) * 100;
+      const percentualArredondado = Math.round(percentual * 100) / 100; // 2 casas decimais
+      
+      if (index === parceiros.length - 1) {
+        // Para o último parceiro, ajusta para que a soma seja exatamente 100%
+        const percentualAjustado = Math.round((100 - somatorioPercentuais) * 100) / 100;
+        return { ...parceiro, percentual_participacao: percentualAjustado };
+      } else {
+        somatorioPercentuais += percentualArredondado;
+        return { ...parceiro, percentual_participacao: percentualArredondado };
+      }
+    });
+    
+    setParceiros(novosPerceiros);
+  };
+
+  // Função para formatar valor monetário durante a digitação
+  const formatarValorMonetario = (valor: string) => {
+    // Remove tudo que não for dígito
+    const apenasNumeros = valor.replace(/\D/g, '');
+    
+    // Converte para número (centavos)
+    const numero = parseInt(apenasNumeros) || 0;
+    
+    // Converte para reais (divide por 100)
+    const reais = numero / 100;
+    
+    return reais;
+  };
+
+  // Função para formatar percentual durante a digitação
+  const formatarPercentual = (valor: string) => {
+    // Remove tudo que não for dígito ou ponto
+    let numeros = valor.replace(/[^\d.,]/g, '');
+    
+    // Substitui vírgula por ponto
+    numeros = numeros.replace(',', '.');
+    
+    // Limita a 2 casas decimais
+    const partes = numeros.split('.');
+    if (partes[1] && partes[1].length > 2) {
+      numeros = partes[0] + '.' + partes[1].substring(0, 2);
     }
     
-    if (filtroDevedorDashboard) {
-      setDevedorFilter(filtroDevedorDashboard);
-      setSearchTerm(filtroDevedorDashboard);
-      console.log('Filtro de devedor aplicado:', filtroDevedorDashboard);
-    }
-  }, [filtroInvestidorDashboard, filtroDevedorDashboard]);
+    const numero = parseFloat(numeros) || 0;
+    
+    // Limita a 100%
+    return Math.min(numero, 100);
+  };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este empréstimo?')) {
-      return;
+  // Função para exibir valor formatado no input
+  const exibirValorFormatado = (valor: number) => {
+    return valor.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const validarFormulario = (): boolean => {
+    if (!emprestimo.devedor.trim()) {
+      toast({
+        title: "Erro de validação",
+        description: "Nome do devedor é obrigatório",
+        variant: "destructive",
+      });
+      return false;
     }
+
+    if (emprestimo.valor_total <= 0) {
+      toast({
+        title: "Erro de validação",
+        description: "Valor total deve ser maior que zero",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (emprestimo.taxa_mensal <= 0) {
+      toast({
+        title: "Erro de validação",
+        description: "Taxa mensal deve ser maior que zero",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    const totalInvestidoParceiros = parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0);
+    if (totalInvestidoParceiros > emprestimo.valor_total) {
+      toast({
+        title: "Erro de validação",
+        description: "Valor total dos parceiros não pode ser maior que o valor do empréstimo",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  const salvarEmprestimo = async () => {
+    if (!validarFormulario()) return;
 
     try {
-      const { error } = await supabase
+      setSaving(true);
+      
+      const { rendimentoTotal, rendimentoIntermediador } = calcularRendimentos();
+      
+      // Lista apenas os campos seguros para atualização
+      const camposPermitidos = {
+        devedor: emprestimo.devedor,
+        valor_total: emprestimo.valor_total,
+        taxa_mensal: emprestimo.taxa_mensal,
+        taxa_intermediador: emprestimo.taxa_intermediador || 0,
+        intermediador_nome: emprestimo.intermediador_nome || '',
+        data_emprestimo: emprestimo.data_emprestimo,
+        data_vencimento: emprestimo.data_vencimento || null,
+        tipo_pagamento: emprestimo.tipo_pagamento || 'mensal',
+        status: emprestimo.status || 'ativo',
+        observacoes: emprestimo.observacoes || ''
+      };
+
+      console.log('Campos para atualizar:', camposPermitidos);
+
+      // Atualizar apenas campos seguros
+      const { error: emprestimoError } = await supabase
         .from('emprestimos')
-        .delete()
+        .update(camposPermitidos)
         .eq('id', id);
 
-      if (error) throw error;
+      if (emprestimoError) throw emprestimoError;
+
+      // Atualizar parceiros - primeiro deletar existentes, depois inserir novos
+      const { error: deleteError } = await supabase
+        .from('emprestimo_parceiros')
+        .delete()
+        .eq('emprestimo_id', id);
+
+      if (deleteError) throw deleteError;
+
+      // Inserir novos parceiros
+      if (parceiros.length > 0) {
+        const parceirosParaInserir = parceiros
+          .filter(p => p.nome_parceiro.trim() && p.valor_investido > 0)
+          .map(p => ({
+            emprestimo_id: id,
+            nome_parceiro: p.nome_parceiro.trim(),
+            valor_investido: p.valor_investido,
+            percentual_participacao: p.percentual_participacao
+          }));
+
+        if (parceirosParaInserir.length > 0) {
+          const { error: parceirosError } = await supabase
+            .from('emprestimo_parceiros')
+            .insert(parceirosParaInserir);
+
+          if (parceirosError) throw parceirosError;
+        }
+      }
 
       toast({
-        title: "Empréstimo excluído",
-        description: "O empréstimo foi removido com sucesso.",
+        title: "Empréstimo atualizado",
+        description: "As alterações foram salvas com sucesso!",
       });
 
-      loadLoans();
+      navigate('/loans');
+
     } catch (error: any) {
       toast({
-        title: "Erro ao excluir",
+        title: "Erro ao salvar",
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setSaving(false);
     }
   };
-
-  // Função para verificar se um empréstimo tem um investidor específico
-  const emprestimoTemInvestidor = (loan: any, nomeInvestidor: string) => {
-    if (!loan.emprestimo_parceiros || loan.emprestimo_parceiros.length === 0) {
-      return false;
-    }
-    
-    return loan.emprestimo_parceiros.some((parceiro: any) => 
-      parceiro.nome_parceiro.toLowerCase().includes(nomeInvestidor.toLowerCase())
-    );
-  };
-
-  // Função para limpar filtros específicos
-  const limparFiltroInvestidor = () => {
-    setInvestidorFilter('');
-    window.history.replaceState({}, document.title);
-  };
-
-  const limparFiltroDevedor = () => {
-    setDevedorFilter('');
-    setSearchTerm('');
-    window.history.replaceState({}, document.title);
-  };
-
-  // Filter loans com novos filtros
-  useEffect(() => {
-    let filtered = loans;
-
-    // Filtro por devedor (busca texto)
-    if (searchTerm || devedorFilter) {
-      const termoBusca = searchTerm || devedorFilter;
-      filtered = filtered.filter(loan => 
-        loan.devedor.toLowerCase().includes(termoBusca.toLowerCase())
-      );
-    }
-
-    // Filtro por status
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(loan => loan.status === statusFilter);
-    }
-
-    // Filtro por investidor
-    if (investidorFilter) {
-      filtered = filtered.filter(loan => emprestimoTemInvestidor(loan, investidorFilter));
-    }
-
-    setFilteredLoans(filtered);
-  }, [loans, searchTerm, statusFilter, investidorFilter, devedorFilter]);
 
   useEffect(() => {
-    loadLoans();
-  }, []);
+    if (id) {
+      loadEmprestimo();
+    }
+  }, [id]);
 
-  // Calcular estatísticas gerais
-  const statsGerais = {
-    totalEmprestado: filteredLoans.reduce((sum, loan) => sum + (loan.valor_total || 0), 0),
-    rendimentoMensalTotal: filteredLoans.reduce((sum, loan) => sum + (loan.rendimento_total || loan.rendimento_mensal || 0), 0),
-    emprestimosAtivos: filteredLoans.filter(loan => loan.status === 'ativo').length,
-    taxaMediaPonderada: 0
-  };
-
-  if (statsGerais.totalEmprestado > 0) {
-    statsGerais.taxaMediaPonderada = (statsGerais.rendimentoMensalTotal / statsGerais.totalEmprestado) * 100;
-  }
+  useEffect(() => {
+    calcularPercentuais();
+  }, [parceiros.map(p => p.valor_investido).join(',')]);
 
   if (loading) {
     return (
@@ -224,508 +367,443 @@ const Loans = () => {
     );
   }
 
+  const { rendimentoTotal, rendimentoIntermediador, rendimentoInvestidores, taxaInvestidores } = calcularRendimentos();
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Empréstimos</h1>
-          <p className="text-muted-foreground">
-            Gerencie todos os seus empréstimos com análises detalhadas
-            {(investidorFilter || devedorFilter) && (
-              <span className="text-blue-600 font-medium">
-                {investidorFilter && ` • Filtrado por investidor: ${investidorFilter}`}
-                {devedorFilter && ` • Filtrado por devedor: ${devedorFilter}`}
-              </span>
-            )}
-          </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={() => navigate('/loans')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Voltar
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">
+              {isEditMode ? 'Editar Empréstimo' : 'Novo Empréstimo'}
+            </h1>
+            <p className="text-muted-foreground">
+              {isEditMode ? `Editando empréstimo de ${emprestimo.devedor}` : 'Cadastre um novo empréstimo'}
+            </p>
+          </div>
         </div>
-        <Button asChild>
-          <Link to="/loans/new">
-            <Plus className="w-4 h-4 mr-2" />
-            Novo Empréstimo
-          </Link>
+        <Button onClick={salvarEmprestimo} disabled={saving}>
+          {saving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          {saving ? 'Salvando...' : 'Salvar Empréstimo'}
         </Button>
       </div>
 
-      {/* Indicadores de Filtros Ativos */}
-      {(investidorFilter || devedorFilter) && (
-        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Filtros ativos:</span>
-              
-              {investidorFilter && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <UserCheck className="h-3 w-3" />
-                  Investidor: {investidorFilter}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                    onClick={limparFiltroInvestidor}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              )}
-              
-              {devedorFilter && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Users className="h-3 w-3" />
-                  Devedor: {devedorFilter}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
-                    onClick={limparFiltroDevedor}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Estatísticas Gerais */}
+      {/* Preview de Rendimentos */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Capital Total</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-primary/10">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <DollarSign className="h-4 w-4" />
+              Valor Total
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-primary">
-              {formatCurrency(statsGerais.totalEmprestado)}
+              {formatCurrency(emprestimo.valor_total || 0)}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Em {filteredLoans.length} empréstimos
-              {(investidorFilter || devedorFilter) && ' (filtrados)'}
-            </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Rendimento Mensal</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-green-50 dark:bg-green-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Percent className="h-4 w-4" />
+              Rendimento Total
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(statsGerais.rendimentoMensalTotal)}
+              {formatCurrency(rendimentoTotal)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {formatPercent(statsGerais.taxaMediaPonderada)} efetivo
+              {emprestimo.taxa_mensal}% a.m.
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ativos</CardTitle>
-            <BarChart className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">
-              {statsGerais.emprestimosAtivos}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              De {filteredLoans.length} total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
-            <PieChart className="h-4 w-4 text-muted-foreground" />
+        <Card className="bg-purple-50 dark:bg-purple-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Sua Parte</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
-              {filteredLoans.length > 0 ? formatCurrency(statsGerais.totalEmprestado / filteredLoans.length) : formatCurrency(0)}
+              {formatCurrency(rendimentoIntermediador)}
             </div>
             <p className="text-xs text-muted-foreground">
-              Por empréstimo
+              {emprestimo.taxa_intermediador}% da taxa
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-orange-50 dark:bg-orange-950/20">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Investidores</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-600">
+              {formatCurrency(rendimentoInvestidores)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {taxaInvestidores.toFixed(2)}% da taxa
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Dados Principais do Empréstimo */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Dados do Empréstimo</CardTitle>
+            <CardDescription>Informações principais</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="devedor">Nome do Devedor *</Label>
+              <Input
+                id="devedor"
+                value={emprestimo.devedor}
+                onChange={(e) => setEmprestimo({...emprestimo, devedor: e.target.value})}
+                placeholder="Digite o nome do devedor"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="valor_total">Valor Total *</Label>
+                <Input
+                  id="valor_total"
+                  type="text"
+                  value={exibirValorFormatado(emprestimo.valor_total)}
+                  onChange={(e) => {
+                    const valorFormatado = formatarValorMonetario(e.target.value);
+                    setEmprestimo({...emprestimo, valor_total: valorFormatado});
+                  }}
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="taxa_mensal">Taxa Mensal (%) *</Label>
+                <Input
+                  id="taxa_mensal"
+                  type="text"
+                  value={emprestimo.taxa_mensal.toFixed(2).replace('.', ',')}
+                  onChange={(e) => {
+                    const percentualFormatado = formatarPercentual(e.target.value);
+                    setEmprestimo({...emprestimo, taxa_mensal: percentualFormatado});
+                  }}
+                  placeholder="4,00"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="data_emprestimo">Data do Empréstimo</Label>
+                <Input
+                  id="data_emprestimo"
+                  type="date"
+                  value={emprestimo.data_emprestimo}
+                  onChange={(e) => setEmprestimo({...emprestimo, data_emprestimo: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="data_vencimento">Data de Vencimento</Label>
+                <Input
+                  id="data_vencimento"
+                  type="date"
+                  value={emprestimo.data_vencimento || ''}
+                  onChange={(e) => setEmprestimo({...emprestimo, data_vencimento: e.target.value})}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="tipo_pagamento">Tipo de Pagamento</Label>
+                <Select 
+                  value={emprestimo.tipo_pagamento} 
+                  onValueChange={(value) => setEmprestimo({...emprestimo, tipo_pagamento: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                    <SelectItem value="trimestral">Trimestral</SelectItem>
+                    <SelectItem value="anual">Anual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="status">Status</Label>
+                <Select 
+                  value={emprestimo.status} 
+                  onValueChange={(value) => setEmprestimo({...emprestimo, status: value})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ativo">Ativo</SelectItem>
+                    <SelectItem value="pendente">Pendente</SelectItem>
+                    <SelectItem value="finalizado">Finalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="observacoes">Observações</Label>
+              <Textarea
+                id="observacoes"
+                value={emprestimo.observacoes || ''}
+                onChange={(e) => setEmprestimo({...emprestimo, observacoes: e.target.value})}
+                placeholder="Observações adicionais sobre o empréstimo"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Intermediação */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Intermediação</CardTitle>
+            <CardDescription>Configuração da sua comissão</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="intermediador_nome">Seu Nome/Empresa</Label>
+              <Input
+                id="intermediador_nome"
+                value={emprestimo.intermediador_nome}
+                onChange={(e) => setEmprestimo({...emprestimo, intermediador_nome: e.target.value})}
+                placeholder="Seu nome ou empresa"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="taxa_intermediador">Taxa de Intermediação (%)</Label>
+              <Input
+                id="taxa_intermediador"
+                type="text"
+                value={emprestimo.taxa_intermediador.toFixed(2).replace('.', ',')}
+                onChange={(e) => {
+                  const percentualFormatado = formatarPercentual(e.target.value);
+                  setEmprestimo({...emprestimo, taxa_intermediador: percentualFormatado});
+                }}
+                placeholder="1,00"
+              />imo, observacoes: e.target.value})}
+                placeholder="Observações adicionais sobre o empréstimo"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Intermediação */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Intermediação</CardTitle>
+            <CardDescription>Configuração da sua comissão</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="intermediador_nome">Seu Nome/Empresa</Label>
+              <Input
+                id="intermediador_nome"
+                value={emprestimo.intermediador_nome}
+                onChange={(e) => setEmprestimo({...emprestimo, intermediador_nome: e.target.value})}
+                placeholder="Seu nome ou empresa"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="taxa_intermediador">Taxa de Intermediação (%)</Label>
+              <Input
+                id="taxa_intermediador"
+                type="number"
+                step="0.01"
+                value={emprestimo.taxa_intermediador}
+                onChange={(e) => setEmprestimo({...emprestimo, taxa_intermediador: parseFloat(e.target.value) || 0})}
+                placeholder="1.00"
+              />
+            </div>
+
+            <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg">
+              <h4 className="font-medium mb-2">Seus Rendimentos</h4>
+              <div className="text-2xl font-bold text-purple-600 mb-1">
+                {formatCurrency(rendimentoIntermediador)}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Por mês de intermediação
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Parceiros/Investidores */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Buscar por devedor..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Parceiros Investidores
+              </CardTitle>
+              <CardDescription>
+                Configure os investidores e suas participações
+              </CardDescription>
             </div>
-            <Select value={statusFilter} onValueChange={(value: LoanStatus | 'all') => setStatusFilter(value)}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="ativo">Ativos</SelectItem>
-                <SelectItem value="pendente">Pendentes</SelectItem>
-                <SelectItem value="finalizado">Finalizados</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {/* Campo de filtro por investidor */}
-            <div className="relative">
-              <UserCheck className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-              <Input
-                placeholder="Filtrar por investidor..."
-                value={investidorFilter}
-                onChange={(e) => setInvestidorFilter(e.target.value)}
-                className="pl-10 w-full sm:w-[200px]"
-              />
-            </div>
+            <Button onClick={adicionarParceiro} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar Parceiro
+            </Button>
           </div>
+        </CardHeader>
+        <CardContent>
+          {parceiros.length === 0 ? (
+            <div className="text-center py-8">
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">
+                Nenhum parceiro adicionado
+              </p>
+              <Button onClick={adicionarParceiro} variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Primeiro Parceiro
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {parceiros.map((parceiro, index) => {
+                const rendimentoMensalParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
+                
+                return (
+                  <div key={index} className="border rounded-lg p-4 bg-green-50 dark:bg-green-950/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <Badge variant="secondary">Parceiro {index + 1}</Badge>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => removerParceiro(index)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="space-y-2">
+                        <Label>Nome do Parceiro</Label>
+                        <Input
+                          value={parceiro.nome_parceiro}
+                          onChange={(e) => atualizarParceiro(index, 'nome_parceiro', e.target.value)}
+                          placeholder="Nome do investidor"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Valor Investido</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={parceiro.valor_investido}
+                          onChange={(e) => atualizarParceiro(index, 'valor_investido', parseFloat(e.target.value) || 0)}
+                          placeholder="0,00"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Participação (%)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={parceiro.percentual_participacao.toFixed(2)}
+                          onChange={(e) => atualizarParceiro(index, 'percentual_participacao', parseFloat(e.target.value) || 0)}
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+
+                    {parceiro.valor_investido > 0 && (
+                      <div className="bg-white dark:bg-gray-800 rounded p-3">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Rendimento Mensal:</span>
+                            <p className="font-bold text-green-600">
+                              {formatCurrency(rendimentoMensalParceiro)}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Taxa Efetiva:</span>
+                            <p className="font-bold text-green-600">
+                              {taxaInvestidores.toFixed(2)}% a.m.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Resumo dos Parceiros */}
+              <div className="bg-muted/50 rounded-lg p-4">
+                <h4 className="font-medium mb-2">Resumo dos Investidores</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Total Investido:</span>
+                    <p className="font-bold">
+                      {formatCurrency(parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0))}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Rendimento Total:</span>
+                    <p className="font-bold text-green-600">
+                      {formatCurrency(rendimentoInvestidores)}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Taxa dos Investidores:</span>
+                    <p className="font-bold">
+                      {taxaInvestidores.toFixed(2)}% a.m.
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Participação:</span>
+                    <p className="font-bold">
+                      {parceiros.reduce((sum, p) => sum + (p.percentual_participacao || 0), 0).toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Loans List */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filteredLoans.map((loan) => {
-          const taxaInvestidores = (loan.taxa_total || loan.taxa_mensal) - (loan.taxa_intermediador || 0);
-          const rendimentoTotal = (loan.rendimento_total || loan.rendimento_mensal || 0);
-          const rendimentoIntermediador = loan.rendimento_intermediador || 0;
-          const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
-          const { roi, mesesPassados, rendimentoAcumulado } = calcularROI(loan);
-          
-          // Destacar se o empréstimo está sendo filtrado
-          const isDestaque = (investidorFilter && emprestimoTemInvestidor(loan, investidorFilter)) || 
-                            (devedorFilter && loan.devedor.toLowerCase().includes(devedorFilter.toLowerCase()));
-          
-          return (
-            <Card 
-              key={loan.id} 
-              className={`hover:shadow-lg transition-all duration-200 border-l-4 ${
-                isDestaque ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/10' : 'border-l-primary'
-              }`}
-            >
-              <CardHeader>
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <CardTitle className={`text-xl ${isDestaque ? 'text-blue-600' : 'text-primary'}`}>
-                      {loan.devedor}
-                      {isDestaque && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          Filtrado
-                        </Badge>
-                      )}
-                    </CardTitle>
-                    <CardDescription className="flex items-center gap-2 mt-1 flex-wrap">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4" />
-                        Emprestado em {format(new Date(loan.data_emprestimo), 'dd/MM/yyyy', { locale: ptBR })}
-                      </div>
-                      {loan.data_vencimento && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          Vence em {format(new Date(loan.data_vencimento), 'dd/MM/yyyy', { locale: ptBR })}
-                        </div>
-                      )}
-                      <Badge variant="outline" className="text-xs">
-                        {mesesPassados} meses
-                      </Badge>
-                    </CardDescription>
-                  </div>
-                  <StatusBadge status={loan.status} />
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-4">
-                {/* Métricas Principais */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-3 bg-primary/10 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Capital</div>
-                    <div className="text-lg font-bold text-primary">
-                      {formatCurrency(loan.valor_total)}
-                    </div>
-                  </div>
-                  <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                    <div className="text-sm text-muted-foreground">Taxa</div>
-                    <div className="text-lg font-bold text-green-600">
-                      {formatPercent(loan.taxa_total || loan.taxa_mensal)} a.m.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Rendimento e ROI */}
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-medium">Rendimento Mensal Total</span>
-                    <span className="text-lg font-bold text-success">
-                      {formatCurrency(rendimentoTotal)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">ROI Acumulado ({mesesPassados} meses)</span>
-                    <span className="font-bold text-blue-600">
-                      {formatPercent(roi)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm mt-1">
-                    <span className="text-muted-foreground">Rendimento Acumulado</span>
-                    <span className="font-bold text-green-600">
-                      {formatCurrency(rendimentoAcumulado)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Intermediador */}
-                {loan.taxa_intermediador > 0 && loan.intermediador_nome && (
-                  <div className="bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Target className="w-4 h-4 text-purple-600" />
-                      <span className="font-semibold text-sm text-purple-800 dark:text-purple-200">
-                        Intermediador
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium">{loan.intermediador_nome}</span>
-                        <Badge variant="secondary">{formatPercent(loan.taxa_intermediador)}</Badge>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Rendimento Mensal</span>
-                        <span className="font-bold text-purple-600">
-                          {formatCurrency(rendimentoIntermediador)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Acumulado ({mesesPassados} meses)</span>
-                        <span className="font-bold text-purple-600">
-                          {formatCurrency(rendimentoIntermediador * mesesPassados)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Investidores */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-green-600" />
-                      <span className="font-semibold text-sm">
-                        Investidores ({formatPercent((taxaInvestidores / (loan.taxa_total || loan.taxa_mensal)) * 100)})
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-green-600 text-sm">
-                        {formatCurrency(rendimentoInvestidores)}/mês
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {formatCurrency(rendimentoInvestidores * mesesPassados)} acumulado
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {loan.emprestimo_parceiros && loan.emprestimo_parceiros.length > 0 ? (
-                    <div className="space-y-2">
-                      {loan.emprestimo_parceiros.map((parceiro: any, index: number) => {
-                        const rendimentoMensalParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
-                        const rendimentoAcumuladoParceiro = rendimentoMensalParceiro * mesesPassados;
-                        const roiParceiro = ((rendimentoAcumuladoParceiro / parceiro.valor_investido) * 100);
-                        const participacaoCapital = (parceiro.valor_investido / loan.valor_total) * 100;
-                        
-                        // Destacar investidor se estiver sendo filtrado
-                        const isInvestidorDestaque = investidorFilter && 
-                          parceiro.nome_parceiro.toLowerCase().includes(investidorFilter.toLowerCase());
-                        
-                        return (
-                          <div 
-                            key={parceiro.id || index} 
-                            className={`border rounded-lg p-3 ${
-                              isInvestidorDestaque 
-                                ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700' 
-                                : 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
-                            }`}
-                          >
-                            <div className="flex justify-between items-start mb-2">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={`font-medium ${
-                                    isInvestidorDestaque 
-                                      ? 'text-blue-800 dark:text-blue-200' 
-                                      : 'text-green-800 dark:text-green-200'
-                                  }`}>
-                                    {parceiro.nome_parceiro}
-                                    {isInvestidorDestaque && (
-                                      <Badge variant="secondary" className="ml-1 text-xs">
-                                        Filtrado
-                                      </Badge>
-                                    )}
-                                  </span>
-                                  <Badge variant="outline" className="text-xs">
-                                    {formatPercent(participacaoCapital)} do capital
-                                  </Badge>
-                                </div>
-                                <div className="text-sm text-muted-foreground mt-1">
-                                  Capital: {formatCurrency(parceiro.valor_investido)} • 
-                                  Participação: {formatPercent(parceiro.percentual_participacao)}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <div className="text-muted-foreground">Mensal</div>
-                                <div className={`font-bold ${
-                                  isInvestidorDestaque ? 'text-blue-600' : 'text-green-600'
-                                }`}>
-                                  {formatCurrency(rendimentoMensalParceiro)}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-muted-foreground">Acumulado</div>
-                                <div className={`font-bold ${
-                                  isInvestidorDestaque ? 'text-blue-600' : 'text-green-600'
-                                }`}>
-                                  {formatCurrency(rendimentoAcumuladoParceiro)}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className={`flex justify-between items-center mt-2 pt-2 border-t ${
-                              isInvestidorDestaque 
-                                ? 'border-blue-200 dark:border-blue-800' 
-                                : 'border-green-200 dark:border-green-800'
-                            }`}>
-                              <span className="text-sm text-muted-foreground">ROI</span>
-                              <span className={`font-bold ${
-                                isInvestidorDestaque 
-                                  ? 'text-blue-700 dark:text-blue-300' 
-                                  : 'text-green-700 dark:text-green-300'
-                              }`}>
-                                {formatPercent(roiParceiro)}
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    // Fallback para empréstimos antigos
-                    <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="text-muted-foreground">Sua Parte</div>
-                          <div className="font-semibold">{formatCurrency(loan.valor_seu || 0)}</div>
-                          <div className="font-bold text-success">
-                            {formatCurrency(loan.seu_rendimento || 0)}/mês
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-muted-foreground">Parceiro</div>
-                          <div className="font-semibold">{formatCurrency(loan.valor_parceiro || 0)}</div>
-                          <div className="font-bold text-success">
-                            {formatCurrency(loan.parceiro_rendimento || 0)}/mês
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Informações Adicionais */}
-                <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                  <div className="flex justify-between items-center text-sm text-muted-foreground">
-                    <span>Tipo de Pagamento</span>
-                    <Badge variant="outline">
-                      {loan.tipo_pagamento || 'Mensal'}
-                    </Badge>
-                  </div>
-                  {loan.observacoes && (
-                    <div className="mt-2 text-sm">
-                      <span className="text-muted-foreground">Obs: </span>
-                      <span className="text-foreground">{loan.observacoes}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Botões de Ação */}
-                <div className="flex gap-2 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="flex-1"
-                    asChild
-                  >
-                    <Link to={`/loans/edit/${loan.id}`}>
-                      <Edit className="w-4 h-4 mr-2" />
-                      Editar
-                    </Link>
-                  </Button>
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
-                    onClick={() => {
-                      console.log('Deletar empréstimo ID:', loan.id);
-                      handleDelete(loan.id);
-                    }}
-                    className="px-3"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      {/* Botões de Ação */}
+      <div className="flex justify-end gap-4">
+        <Button variant="outline" onClick={() => navigate('/loans')}>
+          Cancelar
+        </Button>
+        <Button onClick={salvarEmprestimo} disabled={saving}>
+          {saving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
+          {saving ? 'Salvando...' : 'Salvar Empréstimo'}
+        </Button>
       </div>
-
-      {filteredLoans.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium text-muted-foreground">
-              {loans.length === 0 ? 'Nenhum empréstimo cadastrado' : 'Nenhum empréstimo encontrado'}
-            </p>
-            <p className="text-muted-foreground text-center mb-4">
-              {loans.length === 0 
-                ? 'Comece cadastrando seu primeiro empréstimo' 
-                : investidorFilter || devedorFilter
-                ? 'Nenhum empréstimo encontrado com os filtros aplicados. Tente limpar os filtros.'
-                : 'Tente ajustar os filtros de busca'
-              }
-            </p>
-            {loans.length === 0 ? (
-              <Button asChild>
-                <Link to="/loans/new">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Criar Primeiro Empréstimo
-                </Link>
-              </Button>
-            ) : (investidorFilter || devedorFilter) && (
-              <div className="flex gap-2">
-                {investidorFilter && (
-                  <Button variant="outline" onClick={limparFiltroInvestidor}>
-                    Limpar Filtro de Investidor
-                  </Button>
-                )}
-                {devedorFilter && (
-                  <Button variant="outline" onClick={limparFiltroDevedor}>
-                    Limpar Filtro de Devedor
-                  </Button>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
 
-export default Loans;
+export default LoanEdit;
