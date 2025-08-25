@@ -49,30 +49,21 @@ interface RecebimentoRealizado {
 }
 
 interface DashboardStats {
-  // Métricas Principais - APENAS VALORES REALIZADOS
   totalEmprestado: number;
   rendimentoTotalRealizado: number;
   rendimentoIntermediadorRealizado: number;
   rendimentoInvestidoresRealizado: number;
   mediaRendimentoMensal: number;
-  
-  // Projeções (6 meses)
   projecaoProximos6Meses: number;
   projecaoIntermediador6Meses: number;
   projecaoInvestidores6Meses: number;
-  
-  // Contadores
   emprestimosAtivos: number;
   totalInvestidores: number;
   totalDevedores: number;
-  
-  // Inadimplência
   totalAtrasado: number;
   quantidadeAtrasados: number;
   valorAtrasadoIntermediador: number;
   valorAtrasadoInvestidores: number;
-  
-  // Performance
   roiMedio: number;
   taxaMediaPonderada: number;
   tempoMedioInvestimento: number;
@@ -81,11 +72,11 @@ interface DashboardStats {
 interface InvestidorDetalhado {
   nome: string;
   totalInvestido: number;
-  rendimentoRealizado: number; // APENAS O QUE FOI PAGO
+  rendimentoRealizado: number;
   emprestimosAtivos: number;
   taxaEfetiva: number;
   participacaoTotal: number;
-  roiRealizado: number; // APENAS O QUE FOI PAGO
+  roiRealizado: number;
   projecao6Meses: number;
   valorAtrasado: number;
 }
@@ -93,7 +84,7 @@ interface InvestidorDetalhado {
 interface DevedorDetalhado {
   devedor: string;
   totalEmprestado: number;
-  rendimentoPago: number; // APENAS O QUE FOI PAGO
+  rendimentoPago: number;
   emprestimosAtivos: number;
   taxaMedia: number;
   status: 'em_dia' | 'atrasado';
@@ -130,19 +121,17 @@ const Dashboard = () => {
     return `${value.toFixed(2)}%`;
   };
 
-  // CORREÇÃO: Calcular próximo pagamento corretamente para trimestrais
   const calcularProximoPagamento = (dataEmprestimo: Date, tipoPagamento: string, numeroMes: number): Date => {
     const data = new Date(dataEmprestimo);
     
     switch (tipoPagamento) {
       case 'trimestral':
-        // CORREÇÃO: Para pagamento trimestral, soma 3 meses por parcela
         data.setMonth(data.getMonth() + (numeroMes * 3));
         break;
       case 'anual':
         data.setFullYear(data.getFullYear() + numeroMes);
         break;
-      default: // mensal
+      default:
         data.setMonth(data.getMonth() + numeroMes);
         break;
     }
@@ -150,19 +139,16 @@ const Dashboard = () => {
     return data;
   };
 
-  // CORREÇÃO: Verificar status considerando histórico completo
   const calcularStatusDevedor = (emprestimo: EmprestimoCompleto): { status: 'em_dia' | 'atrasado'; parcelasAtrasadas: number } => {
     const dataEmprestimo = parseISO(emprestimo.data_emprestimo);
     const tipoPagamento = emprestimo.tipo_pagamento || 'mensal';
     const hoje = new Date();
     let parcelasAtrasadas = 0;
     
-    // Verificar todas as parcelas que já venceram
     let numeroMes = 1;
     let proximoPagamento = calcularProximoPagamento(dataEmprestimo, tipoPagamento, numeroMes);
     
     while (proximoPagamento < hoje && numeroMes < 120) {
-      // Verificar se esta parcela foi paga
       const pagamentoEncontrado = pagamentosRecebidos.find(p => 
         p.emprestimo_id === emprestimo.id &&
         new Date(p.data_vencimento).getMonth() === proximoPagamento.getMonth() &&
@@ -184,7 +170,6 @@ const Dashboard = () => {
     };
   };
 
-  // CORREÇÃO: Calcular projeções com datas corretas
   const calcularProjecao6Meses = (): ProjecaoMensal[] => {
     const hoje = new Date();
     const projecoes: ProjecaoMensal[] = [];
@@ -224,7 +209,6 @@ const Dashboard = () => {
             totalPrevisto += rendimentoTotal;
             intermediadorTotal += rendimentoIntermediador;
             
-            // Distribuir por investidor
             if (emprestimo.emprestimo_parceiros && emprestimo.emprestimo_parceiros.length > 0) {
               emprestimo.emprestimo_parceiros.forEach((parceiro: any) => {
                 const valorParceiro = (rendimentoInvestidores * parceiro.percentual_participacao) / 100;
@@ -253,21 +237,18 @@ const Dashboard = () => {
     return projecoes;
   };
 
-  // CORREÇÃO: Calcular rendimentos baseado apenas no que foi efetivamente pago
   const calcularRendimentosRealizados = () => {
     let rendimentoIntermediadorRealizado = 0;
     let rendimentoInvestidoresRealizado = 0;
     let totalEmprestado = 0;
     let totalPago = 0;
 
-    // Somar todos os empréstimos ativos
     emprestimos.forEach(emprestimo => {
       if (emprestimo.status === 'ativo') {
         totalEmprestado += emprestimo.valor_total;
       }
     });
 
-    // Somar apenas os pagamentos efetivamente recebidos
     pagamentosRecebidos.forEach(pagamento => {
       if (pagamento.status === 'pago') {
         totalPago += pagamento.valor_recebido;
@@ -289,13 +270,11 @@ const Dashboard = () => {
     };
   };
 
-  // Calcular stats do dashboard
   const dashboardStats: DashboardStats = useMemo(() => {
     const activeLoans = emprestimos.filter(loan => loan.status === 'ativo');
     const rendimentos = calcularRendimentosRealizados();
     const projecoes = calcularProjecao6Meses();
     
-    // Calcular inadimplência
     let totalAtrasado = 0;
     let quantidadeAtrasados = 0;
     let valorAtrasadoIntermediador = 0;
@@ -305,7 +284,6 @@ const Dashboard = () => {
       const statusDevedor = calcularStatusDevedor(emprestimo);
       if (statusDevedor.status === 'atrasado') {
         quantidadeAtrasados++;
-        // Calcular valor atrasado (simplificado)
         const rendimentoMensal = emprestimo.valor_total * (emprestimo.taxa_mensal / 100);
         const valorAtrasadoEmprestimo = rendimentoMensal * statusDevedor.parcelasAtrasadas;
         totalAtrasado += valorAtrasadoEmprestimo;
@@ -318,7 +296,6 @@ const Dashboard = () => {
       }
     });
 
-    // Calcular investidores únicos
     const investidoresUnicos = new Set<string>();
     activeLoans.forEach(loan => {
       if (loan.emprestimo_parceiros && loan.emprestimo_parceiros.length > 0) {
@@ -328,7 +305,6 @@ const Dashboard = () => {
       }
     });
 
-    // Calcular devedores únicos
     const devedoresUnicos = new Set(activeLoans.map(loan => loan.devedor));
 
     return {
@@ -353,11 +329,9 @@ const Dashboard = () => {
     };
   }, [emprestimos, pagamentosRecebidos]);
 
-  // CORREÇÃO: Investidores detalhados baseado apenas em valores realizados
   const investidoresDetalhados: InvestidorDetalhado[] = useMemo(() => {
     const investidoresMap = new Map<string, InvestidorDetalhado>();
 
-    // Somar rendimentos realizados por investidor
     pagamentosRecebidos.forEach(pagamento => {
       if (pagamento.status === 'pago') {
         const emprestimo = emprestimos.find(e => e.id === pagamento.emprestimo_id);
@@ -389,10 +363,8 @@ const Dashboard = () => {
       }
     });
 
-    // Calcular demais métricas
     const projecoes = calcularProjecao6Meses();
     investidoresMap.forEach((investidor, nome) => {
-      // Calcular total investido e empréstimos ativos
       emprestimos.forEach(emprestimo => {
         if (emprestimo.status === 'ativo' && emprestimo.emprestimo_parceiros?.length > 0) {
           const parceiro = emprestimo.emprestimo_parceiros.find((p: any) => p.nome_parceiro === nome);
@@ -404,12 +376,10 @@ const Dashboard = () => {
         }
       });
 
-      // Calcular ROI realizado
       investidor.roiRealizado = investidor.totalInvestido > 0 ? (investidor.rendimentoRealizado / investidor.totalInvestido) * 100 : 0;
       investidor.participacaoTotal = (investidor.totalInvestido / dashboardStats.totalEmprestado) * 100;
-      investidor.taxaEfetiva = investidor.roiRealizado; // Taxa efetiva = ROI realizado
+      investidor.taxaEfetiva = investidor.roiRealizado;
 
-      // Calcular projeção 6 meses
       projecoes.forEach(projecao => {
         const investidorProjecao = projecao.investidores.find(i => i.nome === nome);
         if (investidorProjecao) {
@@ -421,7 +391,6 @@ const Dashboard = () => {
     return Array.from(investidoresMap.values()).sort((a, b) => b.rendimentoRealizado - a.rendimentoRealizado);
   }, [emprestimos, pagamentosRecebidos, dashboardStats.totalEmprestado]);
 
-  // CORREÇÃO: Devedores detalhados baseado apenas em valores realizados
   const devedoresDetalhados: DevedorDetalhado[] = useMemo(() => {
     const devedoresMap = new Map<string, DevedorDetalhado>();
 
@@ -430,7 +399,6 @@ const Dashboard = () => {
         const nome = emprestimo.devedor;
         const statusDevedor = calcularStatusDevedor(emprestimo);
         
-        // Calcular rendimento pago para este empréstimo
         const rendimentoPago = pagamentosRecebidos
           .filter(p => p.emprestimo_id === emprestimo.id && p.status === 'pago')
           .reduce((sum, p) => sum + p.valor_recebido, 0);
@@ -454,23 +422,18 @@ const Dashboard = () => {
         devedor.rendimentoPago += rendimentoPago;
         devedor.emprestimosAtivos++;
         
-        // Atualizar status se algum empréstimo estiver atrasado
         if (statusDevedor.status === 'atrasado') {
           devedor.status = 'atrasado';
           devedor.parcelasAtrasadas += statusDevedor.parcelasAtrasadas;
           
-          // Calcular valor atrasado
           const rendimentoMensal = emprestimo.valor_total * (emprestimo.taxa_mensal / 100);
           devedor.valorAtrasado += rendimentoMensal * statusDevedor.parcelasAtrasadas;
         }
       }
     });
 
-    // Calcular taxa média para cada devedor
     devedoresMap.forEach(devedor => {
       devedor.taxaMedia = devedor.totalEmprestado > 0 ? (devedor.rendimentoPago / devedor.totalEmprestado) * 100 : 0;
-      
-      // Calcular histórico de pagamentos (simplificado)
       devedor.historicoPagamentos = devedor.status === 'em_dia' ? 100 : Math.max(0, 100 - (devedor.parcelasAtrasadas * 10));
     });
 
@@ -493,7 +456,6 @@ const Dashboard = () => {
     try {
       setLoading(true);
 
-      // Carregar empréstimos com parceiros
       const { data: loansData, error: loansError } = await supabase
         .from('emprestimos')
         .select(`
@@ -503,7 +465,6 @@ const Dashboard = () => {
 
       if (loansError) throw loansError;
 
-      // Carregar todos os pagamentos
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('recebimentos')
         .select('*')
@@ -545,7 +506,6 @@ const Dashboard = () => {
         <p className="text-muted-foreground">Visão geral inteligente dos seus investimentos</p>
       </div>
 
-      {/* Métricas Principais - CORREÇÃO: Apenas valores realizados */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -608,9 +568,7 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* MELHORADO: Seção de Projeções e Calendário - Layout organizado */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Projeções dos Próximos 6 Meses - Cards agrupados */}
         <div className="lg:col-span-1">
           <h2 className="text-xl font-semibold mb-4">Projeção 6 Meses</h2>
           <div className="space-y-4">
@@ -626,6 +584,34 @@ const Dashboard = () => {
                   {formatCurrency(dashboardStats.projecaoProximos6Meses)}
                 </div>
                 <p className="text-xs text-muted-foreground">
+                  Média: {formatCurrency(dashboardStats.projecaoProximos6Meses / 6)}/mês
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Projeção Intermediador</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold text-purple-600">
+                  {formatCurrency(dashboardStats.projecaoIntermediador6Meses)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Média: {formatCurrency(dashboardStats.projecaoIntermediador6Meses / 6)}/mês
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Projeção Investidores</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold text-orange-600">
+                  {formatCurrency(dashboardStats.projecaoInvestidores6Meses)}
+                </div>
+                <p className="text-xs text-muted-foreground">
                   Média: {formatCurrency(dashboardStats.projecaoInvestidores6Meses / 6)}/mês
                 </p>
               </CardContent>
@@ -633,7 +619,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Calendário de Recebimentos */}
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
@@ -688,7 +673,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Alertas de Inadimplência */}
       {(dashboardStats.totalAtrasado > 0 || dashboardStats.quantidadeAtrasados > 0) && (
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardHeader>
@@ -720,9 +704,7 @@ const Dashboard = () => {
         </Card>
       )}
 
-      {/* Análises Detalhadas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* CORREÇÃO: Investidores Detalhados - Apenas valores realizados */}
         <Card>
           <CardHeader>
             <CardTitle>Análise Detalhada por Investidor</CardTitle>
@@ -796,7 +778,6 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* CORREÇÃO: Devedores Detalhados - Apenas valores realizados e status correto */}
         <Card>
           <CardHeader>
             <CardTitle>Análise Detalhada por Devedor</CardTitle>
@@ -883,36 +864,96 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Taxa Média Ponderada</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {formatPercent(dashboardStats.taxaMediaPonderada)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Baseado em valores realizados
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tempo Médio</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-gray-600">
+              {dashboardStats.tempoMedioInvestimento.toFixed(1)} meses
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Duração média dos empréstimos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Rendimento Médio</CardTitle>
+            <Zap className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {formatCurrency(dashboardStats.mediaRendimentoMensal)}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Por empréstimo ativo
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChart className="h-5 w-5" />
+            Resumo Geral
+          </CardTitle>
+          <CardDescription>
+            Visão consolidada da carteira de investimentos
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="text-center p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+              <Building className="h-8 w-8 mx-auto mb-2 text-blue-600" />
+              <div className="text-2xl font-bold text-blue-600">{dashboardStats.totalDevedores}</div>
+              <div className="text-sm text-muted-foreground">Devedores Ativos</div>
+            </div>
+            
+            <div className="text-center p-4 bg-green-50 dark:bg-green-950/20 rounded-lg">
+              <Users className="h-8 w-8 mx-auto mb-2 text-green-600" />
+              <div className="text-2xl font-bold text-green-600">{dashboardStats.totalInvestidores}</div>
+              <div className="text-sm text-muted-foreground">Investidores Ativos</div>
+            </div>
+            
+            <div className="text-center p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg">
+              <DollarSign className="h-8 w-8 mx-auto mb-2 text-purple-600" />
+              <div className="text-2xl font-bold text-purple-600">{dashboardStats.emprestimosAtivos}</div>
+              <div className="text-sm text-muted-foreground">Empréstimos Ativos</div>
+            </div>
+            
+            <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
+              <TrendingUp className="h-8 w-8 mx-auto mb-2 text-orange-600" />
+              <div className="text-2xl font-bold text-orange-600">
+                {formatPercent(dashboardStats.roiMedio)}
+              </div>
+              <div className="text-sm text-muted-foreground">ROI Médio Realizado</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
 
-export default Dashboard;aoProximos6Meses / 6)}/mês
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Projeção Intermediador</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-xl font-bold text-purple-600">
-                  {formatCurrency(dashboardStats.projecaoIntermediador6Meses)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Média: {formatCurrency(dashboardStats.projecaoIntermediador6Meses / 6)}/mês
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-orange-50 dark:bg-orange-950/20 border-orange-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Projeção Investidores</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-xl font-bold text-orange-600">
-                  {formatCurrency(dashboardStats.projecaoInvestidores6Meses)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Média: {formatCurrency(dashboardStats.projec
+export default Dashboard;
