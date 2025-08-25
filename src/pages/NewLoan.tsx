@@ -310,6 +310,13 @@ const NewLoan = () => {
                   const valorFormatado = formatarValorMonetario(e.target.value);
                   handleInputChange('valor_total', valorFormatado);
                 }}
+                onFocus={(e) => e.target.select()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Backspace' || e.key === 'Delete') {
+                    e.preventDefault();
+                    handleInputChange('valor_total', 0);
+                  }
+                }}
                 required
               />
             </div>
@@ -326,6 +333,13 @@ const NewLoan = () => {
                     const percentualFormatado = formatarPercentual(e.target.value);
                     handleInputChange('taxa_total', percentualFormatado);
                   }}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' || e.key === 'Delete') {
+                      e.preventDefault();
+                      handleInputChange('taxa_total', 0);
+                    }
+                  }}
                   required
                 />
               </div>
@@ -339,6 +353,13 @@ const NewLoan = () => {
                   onChange={(e) => {
                     const percentualFormatado = formatarPercentual(e.target.value);
                     handleInputChange('taxa_intermediador', percentualFormatado);
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' || e.key === 'Delete') {
+                      e.preventDefault();
+                      handleInputChange('taxa_intermediador', 0);
+                    }
                   }}
                 />
               </div>
@@ -465,6 +486,13 @@ const NewLoan = () => {
                         const valorFormatado = formatarValorMonetario(e.target.value);
                         handleParceiroChange(index, 'valor_investido', valorFormatado);
                       }}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace' || e.key === 'Delete') {
+                          e.preventDefault();
+                          handleParceiroChange(index, 'valor_investido', 0);
+                        }
+                      }}
                       required
                     />
                   </div>
@@ -477,6 +505,13 @@ const NewLoan = () => {
                       onChange={(e) => {
                         const percentualFormatado = formatarPercentual(e.target.value);
                         handleParceiroChange(index, 'percentual_participacao', percentualFormatado);
+                      }}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Backspace' || e.key === 'Delete') {
+                          e.preventDefault();
+                          handleParceiroChange(index, 'percentual_participacao', 0);
+                        }
                       }}
                       required
                     />
