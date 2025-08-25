@@ -36,19 +36,48 @@ const NewLoan = () => {
     ]
   });
 
-  const formatCurrency = (value) => {
+  // Funções de formatação
+  const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-      minimumFractionDigits: 2
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     });
   };
 
-  const handleInputChange = (field, value) => {
+  const formatarValorMonetario = (valor: string) => {
+    const apenasNumeros = valor.replace(/\D/g, '');
+    const numero = parseInt(apenasNumeros) || 0;
+    const reais = numero / 100;
+    return reais;
+  };
+
+  const formatarPercentual = (valor: string) => {
+    let numeros = valor.replace(/[^\d.,]/g, '');
+    numeros = numeros.replace(',', '.');
+    
+    const partes = numeros.split('.');
+    if (partes[1] && partes[1].length > 2) {
+      numeros = partes[0] + '.' + partes[1].substring(0, 2);
+    }
+    
+    const numero = parseFloat(numeros) || 0;
+    return Math.min(numero, 100);
+  };
+
+  const exibirValorFormatado = (valor: number) => {
+    return valor.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleParceiroChange = (index, field, value) => {
+  const handleParceiroChange = (index: number, field: string, value: any) => {
     const newParceiros = [...formData.parceiros];
     newParceiros[index] = { ...newParceiros[index], [field]: value };
     setFormData(prev => ({ ...prev, parceiros: newParceiros }));
@@ -66,7 +95,7 @@ const NewLoan = () => {
     }));
   };
 
-  const removeParceiro = (index) => {
+  const removeParceiro = (index: number) => {
     if (formData.parceiros.length === 1) {
       toast({
         title: "Erro",
@@ -93,10 +122,20 @@ const NewLoan = () => {
       return;
     }
 
-    const newParceiros = formData.parceiros.map(parceiro => ({
-      ...parceiro,
-      percentual_participacao: (parceiro.valor_investido / totalInvestido) * 100
-    }));
+    let somatorioPercentuais = 0;
+    const newParceiros = formData.parceiros.map((parceiro, index) => {
+      const percentual = (parceiro.valor_investido / totalInvestido) * 100;
+      const percentualArredondado = Math.round(percentual * 100) / 100;
+      
+      if (index === formData.parceiros.length - 1) {
+        // Para o último parceiro, ajusta para que a soma seja exatamente 100%
+        const percentualAjustado = Math.round((100 - somatorioPercentuais) * 100) / 100;
+        return { ...parceiro, percentual_participacao: percentualAjustado };
+      } else {
+        somatorioPercentuais += percentualArredondado;
+        return { ...parceiro, percentual_participacao: percentualArredondado };
+      }
+    });
 
     setFormData(prev => ({ ...prev, parceiros: newParceiros }));
 
@@ -106,7 +145,7 @@ const NewLoan = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const totalInvestido = formData.parceiros.reduce((sum, p) => sum + p.valor_investido, 0);
@@ -122,7 +161,7 @@ const NewLoan = () => {
       return;
     }
 
-    if (totalInvestido !== formData.valor_total) {
+    if (Math.abs(totalInvestido - formData.valor_total) > 0.01) {
       toast({
         title: "Erro de validação",
         description: "A soma dos valores investidos deve ser igual ao valor total do empréstimo.",
@@ -197,7 +236,7 @@ const NewLoan = () => {
       });
 
       navigate('/loans');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Erro ao criar empréstimo",
         description: error.message,
@@ -262,20 +301,17 @@ const NewLoan = () => {
 
             <div className="space-y-2">
               <Label htmlFor="valor_total">Valor Total do Empréstimo *</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
-                <Input
-                  id="valor_total"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0,00"
-                  value={formData.valor_total || ''}
-                  onChange={(e) => handleInputChange('valor_total', parseFloat(e.target.value) || 0)}
-                  className="pl-10"
-                  required
-                />
-              </div>
+              <Input
+                id="valor_total"
+                type="text"
+                placeholder="0,00"
+                value={exibirValorFormatado(formData.valor_total)}
+                onChange={(e) => {
+                  const valorFormatado = formatarValorMonetario(e.target.value);
+                  handleInputChange('valor_total', valorFormatado);
+                }}
+                required
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -283,12 +319,13 @@ const NewLoan = () => {
                 <Label htmlFor="taxa_total">Taxa Total (%) *</Label>
                 <Input
                   id="taxa_total"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Ex: 3.0"
-                  value={formData.taxa_total || ''}
-                  onChange={(e) => handleInputChange('taxa_total', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  placeholder="3,00"
+                  value={formData.taxa_total.toFixed(2).replace('.', ',')}
+                  onChange={(e) => {
+                    const percentualFormatado = formatarPercentual(e.target.value);
+                    handleInputChange('taxa_total', percentualFormatado);
+                  }}
                   required
                 />
               </div>
@@ -296,19 +333,20 @@ const NewLoan = () => {
                 <Label htmlFor="taxa_intermediador">Taxa do Intermediador (%)</Label>
                 <Input
                   id="taxa_intermediador"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Ex: 1.0"
-                  value={formData.taxa_intermediador || ''}
-                  onChange={(e) => handleInputChange('taxa_intermediador', parseFloat(e.target.value) || 0)}
+                  type="text"
+                  placeholder="1,00"
+                  value={formData.taxa_intermediador.toFixed(2).replace('.', ',')}
+                  onChange={(e) => {
+                    const percentualFormatado = formatarPercentual(e.target.value);
+                    handleInputChange('taxa_intermediador', percentualFormatado);
+                  }}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="taxa_investidores">Taxa dos Investidores (%)</Label>
                 <Input
                   id="taxa_investidores"
-                  value={taxaInvestidores.toFixed(2)}
+                  value={taxaInvestidores.toFixed(2).replace('.', ',')}
                   disabled
                   className="bg-muted"
                 />
@@ -419,30 +457,27 @@ const NewLoan = () => {
                   </div>
                   <div className="space-y-2">
                     <Label>Valor Investido *</Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">R$</span>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0,00"
-                        value={parceiro.valor_investido || ''}
-                        onChange={(e) => handleParceiroChange(index, 'valor_investido', parseFloat(e.target.value) || 0)}
-                        className="pl-10"
-                        required
-                      />
-                    </div>
+                    <Input
+                      type="text"
+                      placeholder="0,00"
+                      value={exibirValorFormatado(parceiro.valor_investido)}
+                      onChange={(e) => {
+                        const valorFormatado = formatarValorMonetario(e.target.value);
+                        handleParceiroChange(index, 'valor_investido', valorFormatado);
+                      }}
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Participação (%)</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      placeholder="0.00"
-                      value={parceiro.percentual_participacao || ''}
-                      onChange={(e) => handleParceiroChange(index, 'percentual_participacao', parseFloat(e.target.value) || 0)}
+                      type="text"
+                      placeholder="0,00"
+                      value={parceiro.percentual_participacao.toFixed(2).replace('.', ',')}
+                      onChange={(e) => {
+                        const percentualFormatado = formatarPercentual(e.target.value);
+                        handleParceiroChange(index, 'percentual_participacao', percentualFormatado);
+                      }}
                       required
                     />
                   </div>
@@ -469,7 +504,7 @@ const NewLoan = () => {
                 </div>
                 <div>
                   <div className="text-muted-foreground">Total Participação</div>
-                  <div className="font-semibold text-lg">{totalPercentuais.toFixed(2)}%</div>
+                  <div className="font-semibold text-lg">{totalPercentuais.toFixed(2).replace('.', ',')}%</div>
                   <div className="text-xs text-muted-foreground">Meta: 100%</div>
                 </div>
                 <div>
@@ -477,15 +512,15 @@ const NewLoan = () => {
                   <div className="font-semibold text-lg text-primary">
                     {formData.taxa_total > 0 ? formatCurrency(rendimentoTotal) : 'R$ 0,00'}
                   </div>
-                  <div className="text-xs text-muted-foreground">{formData.taxa_total}% a.m.</div>
+                  <div className="text-xs text-muted-foreground">{formData.taxa_total.toFixed(2).replace('.', ',')}% a.m.</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Status</div>
                   <div className={`font-semibold text-lg ${
-                    totalInvestido === formData.valor_total && Math.abs(totalPercentuais - 100) < 0.01
+                    Math.abs(totalInvestido - formData.valor_total) < 0.01 && Math.abs(totalPercentuais - 100) < 0.01
                       ? 'text-success' : 'text-destructive'
                   }`}>
-                    {totalInvestido === formData.valor_total && Math.abs(totalPercentuais - 100) < 0.01
+                    {Math.abs(totalInvestido - formData.valor_total) < 0.01 && Math.abs(totalPercentuais - 100) < 0.01
                       ? '✓ OK' : '⚠ Verificar'
                     }
                   </div>
@@ -498,10 +533,10 @@ const NewLoan = () => {
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="font-medium text-yellow-800 dark:text-yellow-200">
-                        📋 {formData.intermediador_nome} (Intermediador)
+                        {formData.intermediador_nome} (Intermediador)
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Taxa: {formData.taxa_intermediador}% do valor total
+                        Taxa: {formData.taxa_intermediador.toFixed(2).replace('.', ',')}% do valor total
                       </div>
                     </div>
                     <div className="text-right">
@@ -518,7 +553,7 @@ const NewLoan = () => {
               {formData.parceiros.length > 0 && formData.valor_total > 0 && taxaInvestidores > 0 && (
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
-                    <h5 className="font-medium">Rendimento dos Investidores ({taxaInvestidores.toFixed(2)}%)</h5>
+                    <h5 className="font-medium">Rendimento dos Investidores ({taxaInvestidores.toFixed(2).replace('.', ',')}%)</h5>
                     <div className="text-sm font-semibold text-success">
                       Total: {formatCurrency(rendimentoInvestidores)}
                     </div>
@@ -533,14 +568,14 @@ const NewLoan = () => {
                         <div className="flex justify-between items-center">
                           <div className="flex-1">
                            <div className="font-medium text-green-800 dark:text-green-200">
-                              👤 {parceiro.nome_parceiro || `Parceiro #${index + 1}`}
+                              {parceiro.nome_parceiro || `Parceiro #${index + 1}`}
                             </div>
                             <div className="text-sm text-muted-foreground">
                               Investiu: {formatCurrency(parceiro.valor_investido)} 
                               ({participacaoReal.toFixed(1)}% do total)
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Participação nos lucros: {parceiro.percentual_participacao.toFixed(1)}%
+                              Participação nos lucros: {parceiro.percentual_participacao.toFixed(2).replace('.', ',')}%
                             </div>
                           </div>
                           <div className="text-right">
@@ -557,7 +592,7 @@ const NewLoan = () => {
               )}
 
               {/* Avisos de Validação */}
-              {totalInvestido !== formData.valor_total && formData.valor_total > 0 && (
+              {Math.abs(totalInvestido - formData.valor_total) > 0.01 && formData.valor_total > 0 && (
                 <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
                   <div className="text-sm text-destructive font-medium">
                     ⚠️ A soma dos valores investidos ({formatCurrency(totalInvestido)}) 
@@ -569,7 +604,7 @@ const NewLoan = () => {
               {Math.abs(totalPercentuais - 100) > 0.01 && (
                 <div className="bg-destructive/10 border border-destructive/20 p-3 rounded">
                   <div className="text-sm text-destructive font-medium">
-                    ⚠️ A soma dos percentuais de participação ({totalPercentuais.toFixed(2)}%) 
+                    ⚠️ A soma dos percentuais de participação ({totalPercentuais.toFixed(2).replace('.', ',')}%) 
                     deve ser igual a 100%
                   </div>
                 </div>
@@ -580,15 +615,15 @@ const NewLoan = () => {
                 <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 rounded">
                   <div className="text-sm">
                     <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">
-                      💡 Como funciona o cálculo:
+                      Como funciona o cálculo:
                     </div>
                     <div className="text-blue-800 dark:text-blue-200 space-y-1">
                       <div>• Valor emprestado: {formatCurrency(formData.valor_total)}</div>
-                      <div>• Taxa total: {formData.taxa_total}% = {formatCurrency(rendimentoTotal)}/mês</div>
+                      <div>• Taxa total: {formData.taxa_total.toFixed(2).replace('.', ',')}% = {formatCurrency(rendimentoTotal)}/mês</div>
                       {formData.taxa_intermediador > 0 && (
-                        <div>• Intermediador: {formData.taxa_intermediador}% = {formatCurrency(rendimentoIntermediador)}/mês</div>
+                        <div>• Intermediador: {formData.taxa_intermediador.toFixed(2).replace('.', ',')}% = {formatCurrency(rendimentoIntermediador)}/mês</div>
                       )}
-                      <div>• Para investidores: {taxaInvestidores.toFixed(2)}% = {formatCurrency(rendimentoInvestidores)}/mês</div>
+                      <div>• Para investidores: {taxaInvestidores.toFixed(2).replace('.', ',')}% = {formatCurrency(rendimentoInvestidores)}/mês</div>
                       <div className="text-xs opacity-75 mt-2">
                         * Cada parceiro recebe conforme sua participação nos lucros dos investidores
                       </div>
