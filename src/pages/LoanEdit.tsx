@@ -18,12 +18,9 @@ import {
   Users,
   DollarSign,
   Percent,
-  Calendar,
-  AlertCircle,
-  Calculator
+  Calendar
 } from 'lucide-react';
-import { format, differenceInDays, parseISO } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { format } from 'date-fns';
 
 interface Parceiro {
   id?: string;
@@ -44,7 +41,6 @@ interface EmprestimoData {
   rendimento_total?: number;
   rendimento_intermediador: number;
   data_emprestimo: string;
-  data_vencimento?: string;
   tipo_pagamento: string;
   status: string;
   observacoes?: string;
@@ -71,7 +67,6 @@ const LoanEdit = () => {
     rendimento_mensal: 0,
     rendimento_intermediador: 0,
     data_emprestimo: new Date().toISOString().split('T')[0],
-    data_vencimento: '',
     tipo_pagamento: 'mensal',
     status: 'ativo',
     observacoes: ''
@@ -85,40 +80,6 @@ const LoanEdit = () => {
       style: 'currency',
       currency: 'BRL',
     });
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '';
-    try {
-      return format(parseISO(dateString), 'dd/MM/yyyy', { locale: ptBR });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const calcularDiasRestantes = () => {
-    if (!emprestimo.data_vencimento) return null;
-    try {
-      const hoje = new Date();
-      const vencimento = parseISO(emprestimo.data_vencimento);
-      const dias = differenceInDays(vencimento, hoje);
-      return dias;
-    } catch {
-      return null;
-    }
-  };
-
-  const getStatusVencimento = () => {
-    const dias = calcularDiasRestantes();
-    if (dias === null) return null;
-    
-    if (dias < 0) {
-      return { tipo: 'vencido', texto: `Vencido há ${Math.abs(dias)} dias`, cor: 'text-red-600' };
-    } else if (dias <= 7) {
-      return { tipo: 'proximo', texto: `Vence em ${dias} dias`, cor: 'text-yellow-600' };
-    } else {
-      return { tipo: 'normal', texto: `${dias} dias restantes`, cor: 'text-green-600' };
-    }
   };
 
   const loadEmprestimo = async () => {
@@ -149,9 +110,7 @@ const LoanEdit = () => {
         ...emprestimoData,
         data_emprestimo: emprestimoData.data_emprestimo ? 
           emprestimoData.data_emprestimo.split('T')[0] : 
-          new Date().toISOString().split('T')[0],
-        data_vencimento: emprestimoData.data_vencimento ? 
-          emprestimoData.data_vencimento.split('T')[0] : ''
+          new Date().toISOString().split('T')[0]
       });
 
       setParceiros(parceirosData || []);
@@ -177,38 +136,11 @@ const LoanEdit = () => {
     const rendimentoIntermediador = (emprestimo.valor_total * taxaIntermediador) / 100;
     const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
 
-    // Calcular rendimento anual/total se houver data de vencimento
-    let rendimentoTotalPeriodo = 0;
-    let rendimentoIntermediadorPeriodo = 0;
-    let rendimentoInvestidoresPeriodo = 0;
-    let mesesPeriodo = 0;
-
-    if (emprestimo.data_emprestimo && emprestimo.data_vencimento) {
-      try {
-        const inicio = parseISO(emprestimo.data_emprestimo);
-        const fim = parseISO(emprestimo.data_vencimento);
-        const diasPeriodo = differenceInDays(fim, inicio);
-        mesesPeriodo = Math.round(diasPeriodo / 30);
-        
-        if (mesesPeriodo > 0) {
-          rendimentoTotalPeriodo = rendimentoTotal * mesesPeriodo;
-          rendimentoIntermediadorPeriodo = rendimentoIntermediador * mesesPeriodo;
-          rendimentoInvestidoresPeriodo = rendimentoInvestidores * mesesPeriodo;
-        }
-      } catch (error) {
-        console.log('Erro ao calcular período:', error);
-      }
-    }
-
     return {
       rendimentoTotal,
       rendimentoIntermediador,
       rendimentoInvestidores,
-      taxaInvestidores,
-      rendimentoTotalPeriodo,
-      rendimentoIntermediadorPeriodo,
-      rendimentoInvestidoresPeriodo,
-      mesesPeriodo
+      taxaInvestidores
     };
   };
 
@@ -242,19 +174,6 @@ const LoanEdit = () => {
     setParceiros(novosPerceiros);
   };
 
-  const distribuirValorEquitativamente = () => {
-    if (parceiros.length === 0) return;
-    
-    const valorPorParceiro = emprestimo.valor_total / parceiros.length;
-    const novosPerceiros = parceiros.map(parceiro => ({
-      ...parceiro,
-      valor_investido: valorPorParceiro,
-      percentual_participacao: 100 / parceiros.length
-    }));
-    
-    setParceiros(novosPerceiros);
-  };
-
   const validarFormulario = (): boolean => {
     if (!emprestimo.devedor.trim()) {
       toast({
@@ -283,30 +202,6 @@ const LoanEdit = () => {
       return false;
     }
 
-    if (emprestimo.taxa_intermediador < 0 || emprestimo.taxa_intermediador > emprestimo.taxa_mensal) {
-      toast({
-        title: "Erro de validação",
-        description: "Taxa de intermediação deve estar entre 0 e a taxa mensal",
-        variant: "destructive",
-      });
-      return false;
-    }
-
-    // Validar datas
-    if (emprestimo.data_vencimento && emprestimo.data_emprestimo) {
-      const dataEmprestimo = parseISO(emprestimo.data_emprestimo);
-      const dataVencimento = parseISO(emprestimo.data_vencimento);
-      
-      if (dataVencimento <= dataEmprestimo) {
-        toast({
-          title: "Erro de validação",
-          description: "Data de vencimento deve ser posterior à data do empréstimo",
-          variant: "destructive",
-        });
-        return false;
-      }
-    }
-
     const totalInvestidoParceiros = parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0);
     if (totalInvestidoParceiros > emprestimo.valor_total) {
       toast({
@@ -315,19 +210,6 @@ const LoanEdit = () => {
         variant: "destructive",
       });
       return false;
-    }
-
-    // Validar parceiros
-    const parceirosValidos = parceiros.filter(p => p.nome_parceiro.trim() && p.valor_investido > 0);
-    for (const parceiro of parceirosValidos) {
-      if (!parceiro.nome_parceiro.trim()) {
-        toast({
-          title: "Erro de validação",
-          description: "Todos os parceiros devem ter nome preenchido",
-          variant: "destructive",
-        });
-        return false;
-      }
     }
 
     return true;
@@ -343,16 +225,15 @@ const LoanEdit = () => {
       
       // Lista apenas os campos seguros para atualização
       const camposPermitidos = {
-        devedor: emprestimo.devedor.trim(),
+        devedor: emprestimo.devedor,
         valor_total: emprestimo.valor_total,
         taxa_mensal: emprestimo.taxa_mensal,
         taxa_intermediador: emprestimo.taxa_intermediador || 0,
-        intermediador_nome: emprestimo.intermediador_nome?.trim() || '',
+        intermediador_nome: emprestimo.intermediador_nome || '',
         data_emprestimo: emprestimo.data_emprestimo,
-        data_vencimento: emprestimo.data_vencimento || null,
         tipo_pagamento: emprestimo.tipo_pagamento || 'mensal',
         status: emprestimo.status || 'ativo',
-        observacoes: emprestimo.observacoes?.trim() || null
+        observacoes: emprestimo.observacoes || ''
       };
 
       console.log('Campos para atualizar:', camposPermitidos);
@@ -374,20 +255,23 @@ const LoanEdit = () => {
       if (deleteError) throw deleteError;
 
       // Inserir novos parceiros
-      const parceirosValidos = parceiros.filter(p => p.nome_parceiro.trim() && p.valor_investido > 0);
-      if (parceirosValidos.length > 0) {
-        const parceirosParaInserir = parceirosValidos.map(p => ({
-          emprestimo_id: id,
-          nome_parceiro: p.nome_parceiro.trim(),
-          valor_investido: p.valor_investido,
-          percentual_participacao: p.percentual_participacao
-        }));
+      if (parceiros.length > 0) {
+        const parceirosParaInserir = parceiros
+          .filter(p => p.nome_parceiro.trim() && p.valor_investido > 0)
+          .map(p => ({
+            emprestimo_id: id,
+            nome_parceiro: p.nome_parceiro.trim(),
+            valor_investido: p.valor_investido,
+            percentual_participacao: p.percentual_participacao
+          }));
 
-        const { error: parceirosError } = await supabase
-          .from('emprestimo_parceiros')
-          .insert(parceirosParaInserir);
+        if (parceirosParaInserir.length > 0) {
+          const { error: parceirosError } = await supabase
+            .from('emprestimo_parceiros')
+            .insert(parceirosParaInserir);
 
-        if (parceirosError) throw parceirosError;
+          if (parceirosError) throw parceirosError;
+        }
       }
 
       toast({
@@ -398,10 +282,9 @@ const LoanEdit = () => {
       navigate('/loans');
 
     } catch (error: any) {
-      console.error('Erro ao salvar:', error);
       toast({
         title: "Erro ao salvar",
-        description: error.message || "Erro desconhecido ao salvar empréstimo",
+        description: error.message,
         variant: "destructive",
       });
     } finally {
@@ -427,20 +310,7 @@ const LoanEdit = () => {
     );
   }
 
-  const { 
-    rendimentoTotal, 
-    rendimentoIntermediador, 
-    rendimentoInvestidores, 
-    taxaInvestidores,
-    rendimentoTotalPeriodo,
-    rendimentoIntermediadorPeriodo,
-    rendimentoInvestidoresPeriodo,
-    mesesPeriodo
-  } = calcularRendimentos();
-
-  const statusVencimento = getStatusVencimento();
-  const totalInvestidoParceiros = parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0);
-  const valorRestante = emprestimo.valor_total - totalInvestidoParceiros;
+  const { rendimentoTotal, rendimentoIntermediador, rendimentoInvestidores, taxaInvestidores } = calcularRendimentos();
 
   return (
     <div className="space-y-6">
@@ -458,12 +328,6 @@ const LoanEdit = () => {
             <p className="text-muted-foreground">
               {isEditMode ? `Editando empréstimo de ${emprestimo.devedor}` : 'Cadastre um novo empréstimo'}
             </p>
-            {statusVencimento && (
-              <p className={`text-sm font-medium ${statusVencimento.cor} flex items-center gap-1`}>
-                <Calendar className="h-3 w-3" />
-                {statusVencimento.texto}
-              </p>
-            )}
           </div>
         </div>
         <Button onClick={salvarEmprestimo} disabled={saving}>
@@ -489,11 +353,6 @@ const LoanEdit = () => {
             <div className="text-2xl font-bold text-primary">
               {formatCurrency(emprestimo.valor_total || 0)}
             </div>
-            {statusVencimento && (
-              <p className={`text-xs ${statusVencimento.cor}`}>
-                {emprestimo.data_vencimento ? formatDate(emprestimo.data_vencimento) : ''}
-              </p>
-            )}
           </CardContent>
         </Card>
 
@@ -501,7 +360,7 @@ const LoanEdit = () => {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Percent className="h-4 w-4" />
-              Rendimento Mensal
+              Rendimento Total
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -511,11 +370,6 @@ const LoanEdit = () => {
             <p className="text-xs text-muted-foreground">
               {emprestimo.taxa_mensal}% a.m.
             </p>
-            {mesesPeriodo > 0 && (
-              <p className="text-xs text-green-600 font-medium">
-                Total: {formatCurrency(rendimentoTotalPeriodo)} ({mesesPeriodo} meses)
-              </p>
-            )}
           </CardContent>
         </Card>
 
@@ -530,11 +384,6 @@ const LoanEdit = () => {
             <p className="text-xs text-muted-foreground">
               {emprestimo.taxa_intermediador}% da taxa
             </p>
-            {mesesPeriodo > 0 && (
-              <p className="text-xs text-purple-600 font-medium">
-                Total: {formatCurrency(rendimentoIntermediadorPeriodo)}
-              </p>
-            )}
           </CardContent>
         </Card>
 
@@ -547,30 +396,11 @@ const LoanEdit = () => {
               {formatCurrency(rendimentoInvestidores)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {taxaInvestidores.toFixed(2)}% a.m.
+              {taxaInvestidores.toFixed(2)}% da taxa
             </p>
-            {mesesPeriodo > 0 && (
-              <p className="text-xs text-orange-600 font-medium">
-                Total: {formatCurrency(rendimentoInvestidoresPeriodo)}
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Alertas de Validação */}
-      {valorRestante > 0 && (
-        <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950/20">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-sm">
-                Valor restante para distribuir: {formatCurrency(valorRestante)}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Dados Principais do Empréstimo */}
@@ -626,18 +456,6 @@ const LoanEdit = () => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="data_vencimento">Data de Vencimento</Label>
-                <Input
-                  id="data_vencimento"
-                  type="date"
-                  value={emprestimo.data_vencimento || ''}
-                  onChange={(e) => setEmprestimo({...emprestimo, data_vencimento: e.target.value})}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
                 <Label htmlFor="tipo_pagamento">Tipo de Pagamento</Label>
                 <Select 
                   value={emprestimo.tipo_pagamento} 
@@ -649,29 +467,27 @@ const LoanEdit = () => {
                   <SelectContent>
                     <SelectItem value="mensal">Mensal</SelectItem>
                     <SelectItem value="trimestral">Trimestral</SelectItem>
-                    <SelectItem value="semestral">Semestral</SelectItem>
                     <SelectItem value="anual">Anual</SelectItem>
-                    <SelectItem value="unico">Pagamento Único</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Status</Label>
-                <Select 
-                  value={emprestimo.status} 
-                  onValueChange={(value) => setEmprestimo({...emprestimo, status: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="pendente">Pendente</SelectItem>
-                    <SelectItem value="finalizado">Finalizado</SelectItem>
-                    <SelectItem value="cancelado">Cancelado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select 
+                value={emprestimo.status} 
+                onValueChange={(value) => setEmprestimo({...emprestimo, status: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ativo">Ativo</SelectItem>
+                  <SelectItem value="pendente">Pendente</SelectItem>
+                  <SelectItem value="finalizado">Finalizado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -709,39 +525,19 @@ const LoanEdit = () => {
                 id="taxa_intermediador"
                 type="number"
                 step="0.01"
-                min="0"
-                max={emprestimo.taxa_mensal}
                 value={emprestimo.taxa_intermediador}
                 onChange={(e) => setEmprestimo({...emprestimo, taxa_intermediador: parseFloat(e.target.value) || 0})}
                 placeholder="1.00"
               />
-              <p className="text-xs text-muted-foreground">
-                Máximo: {emprestimo.taxa_mensal}% (taxa mensal total)
-              </p>
             </div>
 
-            <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg space-y-2">
-              <h4 className="font-medium">Seus Rendimentos</h4>
-              <div className="text-2xl font-bold text-purple-600">
+            <div className="bg-purple-50 dark:bg-purple-950/20 p-4 rounded-lg">
+              <h4 className="font-medium mb-2">Seus Rendimentos</h4>
+              <div className="text-2xl font-bold text-purple-600 mb-1">
                 {formatCurrency(rendimentoIntermediador)}
               </div>
               <p className="text-sm text-muted-foreground">
                 Por mês de intermediação
-              </p>
-              {mesesPeriodo > 0 && (
-                <p className="text-sm text-purple-600 font-medium">
-                  Rendimento total do período: {formatCurrency(rendimentoIntermediadorPeriodo)}
-                </p>
-              )}
-            </div>
-
-            <div className="bg-orange-50 dark:bg-orange-950/20 p-4 rounded-lg space-y-2">
-              <h4 className="font-medium">Taxa para Investidores</h4>
-              <div className="text-xl font-bold text-orange-600">
-                {taxaInvestidores.toFixed(2)}% a.m.
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Rendimento: {formatCurrency(rendimentoInvestidores)}/mês
               </p>
             </div>
           </CardContent>
@@ -761,22 +557,10 @@ const LoanEdit = () => {
                 Configure os investidores e suas participações
               </CardDescription>
             </div>
-            <div className="flex gap-2">
-              {parceiros.length > 0 && (
-                <Button 
-                  onClick={distribuirValorEquitativamente}
-                  variant="outline"
-                  size="sm"
-                >
-                  <Calculator className="h-4 w-4 mr-2" />
-                  Distribuir Igualmente
-                </Button>
-              )}
-              <Button onClick={adicionarParceiro} variant="outline">
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar Parceiro
-              </Button>
-            </div>
+            <Button onClick={adicionarParceiro} variant="outline">
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar Parceiro
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -795,7 +579,6 @@ const LoanEdit = () => {
             <div className="space-y-4">
               {parceiros.map((parceiro, index) => {
                 const rendimentoMensalParceiro = (parceiro.valor_investido * taxaInvestidores) / 100;
-                const rendimentoPeriodoParceiro = mesesPeriodo > 0 ? rendimentoMensalParceiro * mesesPeriodo : 0;
                 
                 return (
                   <div key={index} className="border rounded-lg p-4 bg-green-50 dark:bg-green-950/20">
@@ -843,7 +626,7 @@ const LoanEdit = () => {
 
                     {parceiro.valor_investido > 0 && (
                       <div className="bg-white dark:bg-gray-800 rounded p-3">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <span className="text-muted-foreground">Rendimento Mensal:</span>
                             <p className="font-bold text-green-600">
@@ -856,22 +639,6 @@ const LoanEdit = () => {
                               {taxaInvestidores.toFixed(2)}% a.m.
                             </p>
                           </div>
-                          {mesesPeriodo > 0 && (
-                            <>
-                              <div>
-                                <span className="text-muted-foreground">Rendimento Período:</span>
-                                <p className="font-bold text-green-600">
-                                  {formatCurrency(rendimentoPeriodoParceiro)}
-                                </p>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Período:</span>
-                                <p className="font-bold">
-                                  {mesesPeriodo} meses
-                                </p>
-                              </div>
-                            </>
-                          )}
                         </div>
                       </div>
                     )}
@@ -881,25 +648,22 @@ const LoanEdit = () => {
 
               {/* Resumo dos Parceiros */}
               <div className="bg-muted/50 rounded-lg p-4">
-                <h4 className="font-medium mb-3">Resumo dos Investidores</h4>
+                <h4 className="font-medium mb-2">Resumo dos Investidores</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Total Investido:</span>
                     <p className="font-bold">
-                      {formatCurrency(totalInvestidoParceiros)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      de {formatCurrency(emprestimo.valor_total)}
+                      {formatCurrency(parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0))}
                     </p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Rendimento Mensal:</span>
+                    <span className="text-muted-foreground">Rendimento Total:</span>
                     <p className="font-bold text-green-600">
                       {formatCurrency(rendimentoInvestidores)}
                     </p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Taxa Investidores:</span>
+                    <span className="text-muted-foreground">Taxa dos Investidores:</span>
                     <p className="font-bold">
                       {taxaInvestidores.toFixed(2)}% a.m.
                     </p>
@@ -911,113 +675,7 @@ const LoanEdit = () => {
                     </p>
                   </div>
                 </div>
-
-                {mesesPeriodo > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <h5 className="font-medium mb-2">Rendimento Total do Período ({mesesPeriodo} meses)</h5>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">Total Geral:</span>
-                        <p className="font-bold text-green-600">
-                          {formatCurrency(rendimentoTotalPeriodo)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Sua Parte:</span>
-                        <p className="font-bold text-purple-600">
-                          {formatCurrency(rendimentoIntermediadorPeriodo)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Investidores:</span>
-                        <p className="font-bold text-orange-600">
-                          {formatCurrency(rendimentoInvestidoresPeriodo)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {valorRestante > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="flex items-center gap-2 text-yellow-600">
-                      <AlertCircle className="h-4 w-4" />
-                      <span className="text-sm font-medium">
-                        Valor restante para distribuir: {formatCurrency(valorRestante)}
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Resumo Final */}
-      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
-        <CardHeader>
-          <CardTitle className="text-center">Resumo Financeiro</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-            <div className="space-y-2">
-              <h4 className="font-medium text-muted-foreground">Rendimento Mensal Total</h4>
-              <p className="text-3xl font-bold text-green-600">
-                {formatCurrency(rendimentoTotal)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {emprestimo.taxa_mensal}% sobre {formatCurrency(emprestimo.valor_total)}
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="font-medium text-muted-foreground">Sua Comissão</h4>
-              <p className="text-3xl font-bold text-purple-600">
-                {formatCurrency(rendimentoIntermediador)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {((rendimentoIntermediador / rendimentoTotal) * 100).toFixed(1)}% do total
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="font-medium text-muted-foreground">Para Investidores</h4>
-              <p className="text-3xl font-bold text-orange-600">
-                {formatCurrency(rendimentoInvestidores)}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {((rendimentoInvestidores / rendimentoTotal) * 100).toFixed(1)}% do total
-              </p>
-            </div>
-          </div>
-
-          {mesesPeriodo > 0 && (
-            <div className="mt-6 pt-6 border-t">
-              <h4 className="font-medium text-center mb-4">Projeção Total do Período</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                <div>
-                  <p className="text-2xl font-bold text-green-600">
-                    {formatCurrency(rendimentoTotalPeriodo)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Rendimento Total</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-purple-600">
-                    {formatCurrency(rendimentoIntermediadorPeriodo)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Sua Comissão</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-orange-600">
-                    {formatCurrency(rendimentoInvestidoresPeriodo)}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Para Investidores</p>
-                </div>
-              </div>
-              <p className="text-center text-sm text-muted-foreground mt-4">
-                Baseado em {mesesPeriodo} meses de duração
-              </p>
             </div>
           )}
         </CardContent>
@@ -1025,7 +683,7 @@ const LoanEdit = () => {
 
       {/* Botões de Ação */}
       <div className="flex justify-end gap-4">
-        <Button variant="outline" onClick={() => navigate('/loans')} disabled={saving}>
+        <Button variant="outline" onClick={() => navigate('/loans')}>
           Cancelar
         </Button>
         <Button onClick={salvarEmprestimo} disabled={saving}>
