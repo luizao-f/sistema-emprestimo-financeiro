@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,9 @@ import {
   Calendar,
   Percent,
   PieChart,
-  BarChart
+  BarChart,
+  X,
+  UserCheck
 } from 'lucide-react';
 import { format, differenceInMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,7 +36,14 @@ const Loans = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<LoanStatus | 'all'>('all');
+  const [investidorFilter, setInvestidorFilter] = useState<string>('');
+  const [devedorFilter, setDevedorFilter] = useState<string>('');
   const { toast } = useToast();
+
+  // NOVO: Hook para capturar filtros do Dashboard
+  const location = useLocation();
+  const filtroInvestidorDashboard = location.state?.filtroInvestidor;
+  const filtroDevedorDashboard = location.state?.filtroDevedor;
 
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
@@ -87,7 +96,6 @@ const Loans = () => {
       
       console.log('Empréstimos carregados:', data);
       setLoans(data || []);
-      setFilteredLoans(data || []);
     } catch (error: any) {
       toast({
         title: "Erro ao carregar empréstimos",
@@ -98,6 +106,20 @@ const Loans = () => {
       setLoading(false);
     }
   };
+
+  // NOVO: Aplicar filtros vindos do Dashboard
+  useEffect(() => {
+    if (filtroInvestidorDashboard) {
+      setInvestidorFilter(filtroInvestidorDashboard);
+      console.log('Filtro de investidor aplicado:', filtroInvestidorDashboard);
+    }
+    
+    if (filtroDevedorDashboard) {
+      setDevedorFilter(filtroDevedorDashboard);
+      setSearchTerm(filtroDevedorDashboard); // Também aplica no campo de busca
+      console.log('Filtro de devedor aplicado:', filtroDevedorDashboard);
+    }
+  }, [filtroInvestidorDashboard, filtroDevedorDashboard]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este empréstimo?')) {
@@ -127,22 +149,55 @@ const Loans = () => {
     }
   };
 
-  // Filter loans based on search and status
+  // NOVO: Função para verificar se um empréstimo tem um investidor específico
+  const emprestimoTemInvestidor = (loan: any, nomeInvestidor: string) => {
+    if (!loan.emprestimo_parceiros || loan.emprestimo_parceiros.length === 0) {
+      return false;
+    }
+    
+    return loan.emprestimo_parceiros.some((parceiro: any) => 
+      parceiro.nome_parceiro.toLowerCase().includes(nomeInvestidor.toLowerCase())
+    );
+  };
+
+  // NOVO: Função para limpar filtros específicos
+  const limparFiltroInvestidor = () => {
+    setInvestidorFilter('');
+    // Limpa também o state da navegação
+    window.history.replaceState({}, document.title);
+  };
+
+  const limparFiltroDevedor = () => {
+    setDevedorFilter('');
+    setSearchTerm('');
+    // Limpa também o state da navegação
+    window.history.replaceState({}, document.title);
+  };
+
+  // ATUALIZADO: Filter loans com novos filtros
   useEffect(() => {
     let filtered = loans;
 
-    if (searchTerm) {
+    // Filtro por devedor (busca texto)
+    if (searchTerm || devedorFilter) {
+      const termoBusca = searchTerm || devedorFilter;
       filtered = filtered.filter(loan => 
-        loan.devedor.toLowerCase().includes(searchTerm.toLowerCase())
+        loan.devedor.toLowerCase().includes(termoBusca.toLowerCase())
       );
     }
 
+    // Filtro por status
     if (statusFilter !== 'all') {
       filtered = filtered.filter(loan => loan.status === statusFilter);
     }
 
+    // NOVO: Filtro por investidor
+    if (investidorFilter) {
+      filtered = filtered.filter(loan => emprestimoTemInvestidor(loan, investidorFilter));
+    }
+
     setFilteredLoans(filtered);
-  }, [loans, searchTerm, statusFilter]);
+  }, [loans, searchTerm, statusFilter, investidorFilter, devedorFilter]);
 
   useEffect(() => {
     loadLoans();
@@ -173,7 +228,15 @@ const Loans = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Empréstimos</h1>
-          <p className="text-muted-foreground">Gerencie todos os seus empréstimos com análises detalhadas</p>
+          <p className="text-muted-foreground">
+            Gerencie todos os seus empréstimos com análises detalhadas
+            {(investidorFilter || devedorFilter) && (
+              <span className="text-blue-600 font-medium">
+                {investidorFilter && ` • Filtrado por investidor: ${investidorFilter}`}
+                {devedorFilter && ` • Filtrado por devedor: ${devedorFilter}`}
+              </span>
+            )}
+          </p>
         </div>
         <Button asChild>
           <Link to="/loans/new">
@@ -182,6 +245,47 @@ const Loans = () => {
           </Link>
         </Button>
       </div>
+
+      {/* NOVO: Indicadores de Filtros Ativos */}
+      {(investidorFilter || devedorFilter) && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+          <CardContent className="pt-4">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Filtros ativos:</span>
+              
+              {investidorFilter && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <UserCheck className="h-3 w-3" />
+                  Investidor: {investidorFilter}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={limparFiltroInvestidor}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Badge>
+              )}
+              
+              {devedorFilter && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  Devedor: {devedorFilter}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                    onClick={limparFiltroDevedor}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Estatísticas Gerais */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -196,6 +300,7 @@ const Loans = () => {
             </div>
             <p className="text-xs text-muted-foreground">
               Em {filteredLoans.length} empréstimos
+              {(investidorFilter || devedorFilter) && ' (filtrados)'}
             </p>
           </CardContent>
         </Card>
@@ -271,6 +376,17 @@ const Loans = () => {
                 <SelectItem value="finalizado">Finalizados</SelectItem>
               </SelectContent>
             </Select>
+            
+            {/* NOVO: Campo de filtro por investidor */}
+            <div className="relative">
+              <UserCheck className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+              <Input
+                placeholder="Filtrar por investidor..."
+                value={investidorFilter}
+                onChange={(e) => setInvestidorFilter(e.target.value)}
+                className="pl-10 w-full sm:w-[200px]"
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -284,12 +400,28 @@ const Loans = () => {
           const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
           const { roi, mesesPassados, rendimentoAcumulado } = calcularROI(loan);
           
+          // NOVO: Destacar se o empréstimo está sendo filtrado
+          const isDestaque = (investidorFilter && emprestimoTemInvestidor(loan, investidorFilter)) || 
+                            (devedorFilter && loan.devedor.toLowerCase().includes(devedorFilter.toLowerCase()));
+          
           return (
-            <Card key={loan.id} className="hover:shadow-lg transition-all duration-200 border-l-4 border-l-primary">
+            <Card 
+              key={loan.id} 
+              className={`hover:shadow-lg transition-all duration-200 border-l-4 ${
+                isDestaque ? 'border-l-blue-500 bg-blue-50/50 dark:bg-blue-950/10' : 'border-l-primary'
+              }`}
+            >
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <CardTitle className="text-xl text-primary">{loan.devedor}</CardTitle>
+                    <CardTitle className={`text-xl ${isDestaque ? 'text-blue-600' : 'text-primary'}`}>
+                      {loan.devedor}
+                      {isDestaque && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          Filtrado
+                        </Badge>
+                      )}
+                    </CardTitle>
                     <CardDescription className="flex items-center gap-2 mt-1">
                       <Calendar className="h-4 w-4" />
                       Emprestado em {format(new Date(loan.data_emprestimo), 'dd/MM/yyyy', { locale: ptBR })}
@@ -398,13 +530,33 @@ const Loans = () => {
                         const roiParceiro = ((rendimentoAcumuladoParceiro / parceiro.valor_investido) * 100);
                         const participacaoCapital = (parceiro.valor_investido / loan.valor_total) * 100;
                         
+                        // NOVO: Destacar investidor se estiver sendo filtrado
+                        const isInvestidorDestaque = investidorFilter && 
+                          parceiro.nome_parceiro.toLowerCase().includes(investidorFilter.toLowerCase());
+                        
                         return (
-                          <div key={parceiro.id || index} className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                          <div 
+                            key={parceiro.id || index} 
+                            className={`border rounded-lg p-3 ${
+                              isInvestidorDestaque 
+                                ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-300 dark:border-blue-700' 
+                                : 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
+                            }`}
+                          >
                             <div className="flex justify-between items-start mb-2">
                               <div className="flex-1">
                                 <div className="flex items-center gap-2">
-                                  <span className="font-medium text-green-800 dark:text-green-200">
+                                  <span className={`font-medium ${
+                                    isInvestidorDestaque 
+                                      ? 'text-blue-800 dark:text-blue-200' 
+                                      : 'text-green-800 dark:text-green-200'
+                                  }`}>
                                     👤 {parceiro.nome_parceiro}
+                                    {isInvestidorDestaque && (
+                                      <Badge variant="secondary" className="ml-1 text-xs">
+                                        Filtrado
+                                      </Badge>
+                                    )}
                                   </span>
                                   <Badge variant="outline" className="text-xs">
                                     {formatPercent(participacaoCapital)} do capital
@@ -420,21 +572,33 @@ const Loans = () => {
                             <div className="grid grid-cols-2 gap-4 text-sm">
                               <div>
                                 <div className="text-muted-foreground">Mensal</div>
-                                <div className="font-bold text-green-600">
+                                <div className={`font-bold ${
+                                  isInvestidorDestaque ? 'text-blue-600' : 'text-green-600'
+                                }`}>
                                   {formatCurrency(rendimentoMensalParceiro)}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-muted-foreground">Acumulado</div>
-                                <div className="font-bold text-green-600">
+                                <div className={`font-bold ${
+                                  isInvestidorDestaque ? 'text-blue-600' : 'text-green-600'
+                                }`}>
                                   {formatCurrency(rendimentoAcumuladoParceiro)}
                                 </div>
                               </div>
                             </div>
                             
-                            <div className="flex justify-between items-center mt-2 pt-2 border-t border-green-200 dark:border-green-800">
+                            <div className={`flex justify-between items-center mt-2 pt-2 border-t ${
+                              isInvestidorDestaque 
+                                ? 'border-blue-200 dark:border-blue-800' 
+                                : 'border-green-200 dark:border-green-800'
+                            }`}>
                               <span className="text-sm text-muted-foreground">ROI</span>
-                              <span className="font-bold text-green-700 dark:text-green-300">
+                              <span className={`font-bold ${
+                                isInvestidorDestaque 
+                                  ? 'text-blue-700 dark:text-blue-300' 
+                                  : 'text-green-700 dark:text-green-300'
+                              }`}>
                                 {formatPercent(roiParceiro)}
                               </span>
                             </div>
@@ -522,16 +686,31 @@ const Loans = () => {
             <p className="text-muted-foreground text-center mb-4">
               {loans.length === 0 
                 ? 'Comece cadastrando seu primeiro empréstimo' 
+                : investidorFilter || devedorFilter
+                ? 'Nenhum empréstimo encontrado com os filtros aplicados. Tente limpar os filtros.'
                 : 'Tente ajustar os filtros de busca'
               }
             </p>
-            {loans.length === 0 && (
+            {loans.length === 0 ? (
               <Button asChild>
                 <Link to="/loans/new">
                   <Plus className="w-4 h-4 mr-2" />
                   Criar Primeiro Empréstimo
                 </Link>
               </Button>
+            ) : (investidorFilter || devedorFilter) && (
+              <div className="flex gap-2">
+                {investidorFilter && (
+                  <Button variant="outline" onClick={limparFiltroInvestidor}>
+                    Limpar Filtro de Investidor
+                  </Button>
+                )}
+                {devedorFilter && (
+                  <Button variant="outline" onClick={limparFiltroDevedor}>
+                    Limpar Filtro de Devedor
+                  </Button>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
