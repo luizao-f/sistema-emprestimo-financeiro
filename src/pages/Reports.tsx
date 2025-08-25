@@ -62,13 +62,46 @@ const Reports = () => {
     parcela: ParcelaCalculada | null;
   }>({ aberto: false, parcela: null });
   const [valorPagamento, setValorPagamento] = useState('');
+  const [distribuicaoPagamento, setDistribuicaoPagamento] = useState<{
+    intermediador: number;
+    investidores: Record<string, number>;
+  }>({ intermediador: 0, investidores: {} });
   const { toast } = useToast();
 
+  const calcularDistribuicaoPagamento = (parcela: ParcelaCalculada, valorPago: number) => {
+    if (!valorPago || valorPago <= 0) {
+      return { intermediador: 0, investidores: {} };
+    }
+
+    // Calcular proporção do pagamento em relação ao valor total
+    const proporcao = Math.min(valorPago / parcela.valor, 1); // Não permitir mais que 100%
+    
+    const intermediador = parcela.rendimentoIntermediador * proporcao;
+    const investidores: Record<string, number> = {};
+
+    if (parcela.investidores && parcela.investidores.length > 0) {
+      parcela.investidores.forEach((inv: any) => {
+        const valorInvestidor = (parcela.rendimentoInvestidores * inv.percentual_participacao / 100) * proporcao;
+        investidores[inv.nome_parceiro] = valorInvestidor;
+      });
+    } else {
+      investidores["Investidores"] = parcela.rendimentoInvestidores * proporcao;
+    }
+
+    return { intermediador, investidores };
   const formatCurrency = (value: number) => {
     return value.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     });
+  };
+
+  const atualizarDistribuicao = (valorStr: string, parcela: ParcelaCalculada | null) => {
+    const valor = parseFloat(valorStr) || 0;
+    if (parcela) {
+      const distribuicao = calcularDistribuicaoPagamento(parcela, valor);
+      setDistribuicaoPagamento(distribuicao);
+    }
   };
 
   const calcularProximoPagamento = (dataEmprestimo: Date, tipoPagamento: string, numeroMes: number): Date => {
@@ -297,6 +330,26 @@ const Reports = () => {
       const valor = parseFloat(valorPagamento);
       const parcela = modalPagamento.parcela;
 
+      // VALIDAÇÃO: Não permitir valor maior que o restante a ser pago
+      const valorRestante = parcela.valor - (parcela.valorRecebido || 0);
+      if (valor > valorRestante + 0.01) { // Tolerância de 1 centavo
+        toast({
+          title: "Valor inválido",
+          description: `O valor não pode ser maior que o restante a ser pago: ${formatCurrency(valorRestante)}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (valor <= 0) {
+        toast({
+          title: "Valor inválido",
+          description: "O valor deve ser maior que zero.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Verificar se já existe um registro para este empréstimo e data
       const { data: existingPayment } = await supabase
         .from('recebimentos')
@@ -311,13 +364,29 @@ const Reports = () => {
       if (existingPayment) {
         // Se já existe, somar com o valor anterior
         novoValorTotal = (parseFloat(existingPayment.valor_recebido) || 0) + valor;
+        
+        // VALIDAÇÃO: Não permitir que o total exceda o valor esperado
+        if (novoValorTotal > parcela.valor + 0.01) {
+          toast({
+            title: "Valor total inválido",
+            description: `O valor total recebido (${formatCurrency(novoValorTotal)}) não pode exceder o valor esperado (${formatCurrency(parcela.valor)})`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
         const novoStatusFinal = novoValorTotal >= parcela.valor * 0.99 ? 'pago' : 'pendente';
+        
+        // Calcular nova distribuição total
+        const novaDistribuicao = calcularDistribuicaoPagamento(parcela, novoValorTotal);
         
         const { error: updateError } = await supabase
           .from('recebimentos')
           .update({
             valor_recebido: novoValorTotal.toString(),
             status: novoStatusFinal,
+            seu_valor: novaDistribuicao.intermediador.toString(),
+            parceiro_valor: Object.values(novaDistribuicao.investidores).reduce((sum, val) => sum + val, 0).toString(),
             observacoes: `${existingPayment.observacoes || ''}\nPagamento adicional de ${formatCurrency(valor)} em ${new Date().toLocaleDateString('pt-BR')}. Total: ${formatCurrency(novoValorTotal)}`
           })
           .eq('id', existingPayment.id);
@@ -335,9 +404,9 @@ const Reports = () => {
             valor_esperado: parcela.valor.toString(),
             valor_recebido: valor.toString(),
             status: novoStatus,
-            seu_valor: parcela.rendimentoIntermediador.toString(),
-            parceiro_valor: parcela.rendimentoInvestidores.toString(),
-            observacoes: `Pagamento ${novoStatus === 'pago' ? 'completo' : 'parcial'} registrado em ${new Date().toLocaleDateString('pt-BR')}`
+            seu_valor: distribuicaoPagamento.intermediador.toString(),
+            parceiro_valor: Object.values(distribuicaoPagamento.investidores).reduce((sum, val) => sum + val, 0).toString(),
+            observacoes: `Pagamento ${novoStatus === 'pago' ? 'completo' : 'parcial'} registrado em ${new Date().toLocaleDateString('pt-BR')}. Distribuição: Intermediador: ${formatCurrency(distribuicaoPagamento.intermediador)}, Investidores: ${Object.entries(distribuicaoPagamento.investidores).map(([nome, valor]) => `${nome}: ${formatCurrency(valor)}`).join(', ')}`
           });
         
         error = insertError;
@@ -352,6 +421,7 @@ const Reports = () => {
 
       setModalPagamento({ aberto: false, parcela: null });
       setValorPagamento('');
+      setDistribuicaoPagamento({ intermediador: 0, investidores: {} });
       
       // Recarregar dados após registrar pagamento
       await loadData();
@@ -655,9 +725,13 @@ const Reports = () => {
                               // Sugerir o valor restante a ser pago
                               const valorRestante = parcela.valor - (parcela.valorRecebido || 0);
                               setValorPagamento(valorRestante.toString());
+                              // Calcular distribuição inicial
+                              const distribuicaoInicial = calcularDistribuicaoPagamento(parcela, valorRestante);
+                              setDistribuicaoPagamento(distribuicaoInicial);
                             } else {
                               setModalPagamento({ aberto: false, parcela: null });
                               setValorPagamento('');
+                              setDistribuicaoPagamento({ intermediador: 0, investidores: {} });
                             }
                           }}
                         >
@@ -714,14 +788,115 @@ const Reports = () => {
                                 <Input
                                   type="number"
                                   step="0.01"
+                                  max={parcela.valor - (parcela.valorRecebido || 0)}
                                   value={valorPagamento}
-                                  onChange={(e) => setValorPagamento(e.target.value)}
+                                  onChange={(e) => {
+                                    const novoValor = e.target.value;
+                                    setValorPagamento(novoValor);
+                                    atualizarDistribuicao(novoValor, parcela);
+                                  }}
                                   placeholder="Digite o valor recebido"
                                 />
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Este valor será {(parcela.valorRecebido || 0) > 0 ? 'somado ao valor já recebido' : 'registrado como primeiro pagamento'}
+                                  Este valor será {(parcela.valorRecebido || 0) > 0 ? 'somado ao valor já recebido' : 'registrado como primeiro pagamento'}.
+                                  Máximo: {formatCurrency(parcela.valor - (parcela.valorRecebido || 0))}
                                 </p>
                               </div>
+
+                              {/* Distribuição Detalhada */}
+                              {parseFloat(valorPagamento) > 0 && (
+                                <div className="border rounded-lg p-4 bg-muted/50">
+                                  <h4 className="font-medium text-sm mb-3">Distribuição do Pagamento:</h4>
+                                  
+                                  {/* Intermediador */}
+                                  <div className="space-y-3">
+                                    <div className="flex justify-between items-center p-3 bg-purple-50 dark:bg-purple-950/20 rounded border">
+                                      <div className="flex items-center gap-2">
+                                        <Target className="h-4 w-4 text-purple-600" />
+                                        <span className="text-sm font-medium">Intermediador ({parcela.taxaIntermediador}% mensal)</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Input
+                                          type="number"
+                                          step="0.01"
+                                          value={distribuicaoPagamento.intermediador.toFixed(2)}
+                                          onChange={(e) => {
+                                            const novoValor = parseFloat(e.target.value) || 0;
+                                            setDistribuicaoPagamento(prev => ({
+                                              ...prev,
+                                              intermediador: novoValor
+                                            }));
+                                          }}
+                                          className="w-24 h-8 text-right text-sm"
+                                        />
+                                        <span className="text-sm font-bold text-purple-600 min-w-[80px]">
+                                          {formatCurrency(distribuicaoPagamento.intermediador)}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Investidores */}
+                                    {Object.entries(distribuicaoPagamento.investidores).map(([nome, valor]) => {
+                                      const investidor = parcela.investidores?.find((inv: any) => inv.nome_parceiro === nome);
+                                      const percentual = investidor?.percentual_participacao || 100;
+                                      
+                                      return (
+                                        <div key={nome} className="flex justify-between items-center p-3 bg-green-50 dark:bg-green-950/20 rounded border">
+                                          <div className="flex items-center gap-2">
+                                            <Users className="h-4 w-4 text-green-600" />
+                                            <span className="text-sm font-medium">
+                                              {nome} {investidor && `(${percentual.toFixed(1)}%)`}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Input
+                                              type="number"
+                                              step="0.01"
+                                              value={valor.toFixed(2)}
+                                              onChange={(e) => {
+                                                const novoValor = parseFloat(e.target.value) || 0;
+                                                setDistribuicaoPagamento(prev => ({
+                                                  ...prev,
+                                                  investidores: {
+                                                    ...prev.investidores,
+                                                    [nome]: novoValor
+                                                  }
+                                                }));
+                                              }}
+                                              className="w-24 h-8 text-right text-sm"
+                                            />
+                                            <span className="text-sm font-bold text-green-600 min-w-[80px]">
+                                              {formatCurrency(valor)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+
+                                    {/* Totalizador */}
+                                    <div className="border-t pt-2 mt-3">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-sm font-medium">Total da Distribuição:</span>
+                                        <span className="text-lg font-bold text-blue-600">
+                                          {formatCurrency(
+                                            distribuicaoPagamento.intermediador + 
+                                            Object.values(distribuicaoPagamento.investidores).reduce((sum, val) => sum + val, 0)
+                                          )}
+                                        </span>
+                                      </div>
+                                      {Math.abs(
+                                        (distribuicaoPagamento.intermediador + 
+                                         Object.values(distribuicaoPagamento.investidores).reduce((sum, val) => sum + val, 0)) - 
+                                        parseFloat(valorPagamento)
+                                      ) > 0.01 && (
+                                        <p className="text-xs text-red-500 mt-1">
+                                          ⚠️ A distribuição não confere com o valor total do pagamento
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
 
                               <div className="flex space-x-2">
                                 <Button
@@ -743,6 +918,7 @@ const Reports = () => {
                                   onClick={() => {
                                     setModalPagamento({ aberto: false, parcela: null });
                                     setValorPagamento('');
+                                    setDistribuicaoPagamento({ intermediador: 0, investidores: {} });
                                   }}
                                   className="flex-1"
                                   disabled={salvandoPagamento}
