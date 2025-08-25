@@ -20,7 +20,6 @@ import {
   Percent,
   Calendar
 } from 'lucide-react';
-import { format } from 'date-fns';
 
 interface Parceiro {
   id?: string;
@@ -45,7 +44,6 @@ interface EmprestimoData {
   tipo_pagamento: string;
   status: string;
   observacoes?: string;
-  // Campos legados
   valor_seu?: number;
   valor_parceiro?: number;
   seu_rendimento?: number;
@@ -81,6 +79,68 @@ const LoanEdit = () => {
     return value.toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  // Funções de formatação melhoradas
+  const formatarValorMonetario = (valor: string) => {
+    const apenasNumeros = valor.replace(/\D/g, '');
+    if (!apenasNumeros) return 0;
+    const numero = parseInt(apenasNumeros) || 0;
+    const reais = numero / 100;
+    return reais;
+  };
+
+  const formatarPercentual = (valor: string) => {
+    const apenasNumeros = valor.replace(/\D/g, '');
+    if (!apenasNumeros) return 0;
+    const numero = parseInt(apenasNumeros) || 0;
+    const percentual = numero / 100;
+    return Math.min(percentual, 100);
+  };
+
+  const exibirValorFormatado = (valor: number) => {
+    if (valor === 0) return '';
+    return valor.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  };
+
+  const exibirPercentualFormatado = (valor: number) => {
+    if (valor === 0) return '';
+    return valor.toFixed(2).replace('.', ',');
+  };
+
+  // Função para formatar valor monetário durante a digitação
+  const formatarValorMonetario = (valor: string) => {
+    const apenasNumeros = valor.replace(/\D/g, '');
+    const numero = parseInt(apenasNumeros) || 0;
+    const reais = numero / 100;
+    return reais;
+  };
+
+  // Função para formatar percentual durante a digitação
+  const formatarPercentual = (valor: string) => {
+    let numeros = valor.replace(/[^\d.,]/g, '');
+    numeros = numeros.replace(',', '.');
+    
+    const partes = numeros.split('.');
+    if (partes[1] && partes[1].length > 2) {
+      numeros = partes[0] + '.' + partes[1].substring(0, 2);
+    }
+    
+    const numero = parseFloat(numeros) || 0;
+    return Math.min(numero, 100);
+  };
+
+  // Função para exibir valor formatado no input
+  const exibirValorFormatado = (valor: number) => {
+    return valor.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     });
   };
 
@@ -91,7 +151,6 @@ const LoanEdit = () => {
       setLoading(true);
       setIsEditMode(true);
 
-      // Carregar dados do empréstimo
       const { data: emprestimoData, error: emprestimoError } = await supabase
         .from('emprestimos')
         .select('*')
@@ -100,7 +159,6 @@ const LoanEdit = () => {
 
       if (emprestimoError) throw emprestimoError;
 
-      // Carregar parceiros
       const { data: parceirosData, error: parceirosError } = await supabase
         .from('emprestimo_parceiros')
         .select('*')
@@ -170,10 +228,19 @@ const LoanEdit = () => {
     const totalInvestido = parceiros.reduce((sum, p) => sum + (p.valor_investido || 0), 0);
     if (totalInvestido === 0) return;
 
-    const novosPerceiros = parceiros.map(parceiro => ({
-      ...parceiro,
-      percentual_participacao: ((parceiro.valor_investido || 0) / totalInvestido) * 100
-    }));
+    let somatorioPercentuais = 0;
+    const novosPerceiros = parceiros.map((parceiro, index) => {
+      const percentual = ((parceiro.valor_investido || 0) / totalInvestido) * 100;
+      const percentualArredondado = Math.round(percentual * 100) / 100;
+      
+      if (index === parceiros.length - 1) {
+        const percentualAjustado = Math.round((100 - somatorioPercentuais) * 100) / 100;
+        return { ...parceiro, percentual_participacao: percentualAjustado };
+      } else {
+        somatorioPercentuais += percentualArredondado;
+        return { ...parceiro, percentual_participacao: percentualArredondado };
+      }
+    });
     
     setParceiros(novosPerceiros);
   };
@@ -225,9 +292,6 @@ const LoanEdit = () => {
     try {
       setSaving(true);
       
-      const { rendimentoTotal, rendimentoIntermediador } = calcularRendimentos();
-      
-      // Lista apenas os campos seguros para atualização
       const camposPermitidos = {
         devedor: emprestimo.devedor,
         valor_total: emprestimo.valor_total,
@@ -241,9 +305,6 @@ const LoanEdit = () => {
         observacoes: emprestimo.observacoes || ''
       };
 
-      console.log('Campos para atualizar:', camposPermitidos);
-
-      // Atualizar apenas campos seguros
       const { error: emprestimoError } = await supabase
         .from('emprestimos')
         .update(camposPermitidos)
@@ -251,7 +312,6 @@ const LoanEdit = () => {
 
       if (emprestimoError) throw emprestimoError;
 
-      // Atualizar parceiros - primeiro deletar existentes, depois inserir novos
       const { error: deleteError } = await supabase
         .from('emprestimo_parceiros')
         .delete()
@@ -259,7 +319,6 @@ const LoanEdit = () => {
 
       if (deleteError) throw deleteError;
 
-      // Inserir novos parceiros
       if (parceiros.length > 0) {
         const parceirosParaInserir = parceiros
           .filter(p => p.nome_parceiro.trim() && p.valor_investido > 0)
@@ -373,7 +432,7 @@ const LoanEdit = () => {
               {formatCurrency(rendimentoTotal)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {emprestimo.taxa_mensal}% a.m.
+              {emprestimo.taxa_mensal.toFixed(2).replace('.', ',')}% a.m.
             </p>
           </CardContent>
         </Card>
@@ -387,7 +446,7 @@ const LoanEdit = () => {
               {formatCurrency(rendimentoIntermediador)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {emprestimo.taxa_intermediador}% da taxa
+              {emprestimo.taxa_intermediador.toFixed(2).replace('.', ',')}% da taxa
             </p>
           </CardContent>
         </Card>
@@ -401,7 +460,7 @@ const LoanEdit = () => {
               {formatCurrency(rendimentoInvestidores)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {taxaInvestidores.toFixed(2)}% da taxa
+              {taxaInvestidores.toFixed(2).replace('.', ',')}% da taxa
             </p>
           </CardContent>
         </Card>
@@ -430,10 +489,12 @@ const LoanEdit = () => {
                 <Label htmlFor="valor_total">Valor Total *</Label>
                 <Input
                   id="valor_total"
-                  type="number"
-                  step="0.01"
-                  value={emprestimo.valor_total}
-                  onChange={(e) => setEmprestimo({...emprestimo, valor_total: parseFloat(e.target.value) || 0})}
+                  type="text"
+                  value={exibirValorFormatado(emprestimo.valor_total)}
+                  onChange={(e) => {
+                    const valorFormatado = formatarValorMonetario(e.target.value);
+                    setEmprestimo({...emprestimo, valor_total: valorFormatado});
+                  }}
                   placeholder="0,00"
                 />
               </div>
@@ -441,11 +502,13 @@ const LoanEdit = () => {
                 <Label htmlFor="taxa_mensal">Taxa Mensal (%) *</Label>
                 <Input
                   id="taxa_mensal"
-                  type="number"
-                  step="0.01"
-                  value={emprestimo.taxa_mensal}
-                  onChange={(e) => setEmprestimo({...emprestimo, taxa_mensal: parseFloat(e.target.value) || 0})}
-                  placeholder="4.00"
+                  type="text"
+                  value={emprestimo.taxa_mensal.toFixed(2).replace('.', ',')}
+                  onChange={(e) => {
+                    const percentualFormatado = formatarPercentual(e.target.value);
+                    setEmprestimo({...emprestimo, taxa_mensal: percentualFormatado});
+                  }}
+                  placeholder="4,00"
                 />
               </div>
             </div>
@@ -539,11 +602,13 @@ const LoanEdit = () => {
               <Label htmlFor="taxa_intermediador">Taxa de Intermediação (%)</Label>
               <Input
                 id="taxa_intermediador"
-                type="number"
-                step="0.01"
-                value={emprestimo.taxa_intermediador}
-                onChange={(e) => setEmprestimo({...emprestimo, taxa_intermediador: parseFloat(e.target.value) || 0})}
-                placeholder="1.00"
+                type="text"
+                value={emprestimo.taxa_intermediador.toFixed(2).replace('.', ',')}
+                onChange={(e) => {
+                  const percentualFormatado = formatarPercentual(e.target.value);
+                  setEmprestimo({...emprestimo, taxa_intermediador: percentualFormatado});
+                }}
+                placeholder="1,00"
               />
             </div>
 
@@ -621,21 +686,25 @@ const LoanEdit = () => {
                       <div className="space-y-2">
                         <Label>Valor Investido</Label>
                         <Input
-                          type="number"
-                          step="0.01"
-                          value={parceiro.valor_investido}
-                          onChange={(e) => atualizarParceiro(index, 'valor_investido', parseFloat(e.target.value) || 0)}
+                          type="text"
+                          value={exibirValorFormatado(parceiro.valor_investido)}
+                          onChange={(e) => {
+                            const valorFormatado = formatarValorMonetario(e.target.value);
+                            atualizarParceiro(index, 'valor_investido', valorFormatado);
+                          }}
                           placeholder="0,00"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label>Participação (%)</Label>
                         <Input
-                          type="number"
-                          step="0.01"
-                          value={parceiro.percentual_participacao.toFixed(2)}
-                          onChange={(e) => atualizarParceiro(index, 'percentual_participacao', parseFloat(e.target.value) || 0)}
-                          placeholder="0.00"
+                          type="text"
+                          value={parceiro.percentual_participacao.toFixed(2).replace('.', ',')}
+                          onChange={(e) => {
+                            const percentualFormatado = formatarPercentual(e.target.value);
+                            atualizarParceiro(index, 'percentual_participacao', percentualFormatado);
+                          }}
+                          placeholder="0,00"
                         />
                       </div>
                     </div>
@@ -652,7 +721,7 @@ const LoanEdit = () => {
                           <div>
                             <span className="text-muted-foreground">Taxa Efetiva:</span>
                             <p className="font-bold text-green-600">
-                              {taxaInvestidores.toFixed(2)}% a.m.
+                              {taxaInvestidores.toFixed(2).replace('.', ',')}% a.m.
                             </p>
                           </div>
                         </div>
@@ -681,13 +750,13 @@ const LoanEdit = () => {
                   <div>
                     <span className="text-muted-foreground">Taxa dos Investidores:</span>
                     <p className="font-bold">
-                      {taxaInvestidores.toFixed(2)}% a.m.
+                      {taxaInvestidores.toFixed(2).replace('.', ',')}% a.m.
                     </p>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Participação:</span>
                     <p className="font-bold">
-                      {parceiros.reduce((sum, p) => sum + (p.percentual_participacao || 0), 0).toFixed(1)}%
+                      {parceiros.reduce((sum, p) => sum + (p.percentual_participacao || 0), 0).toFixed(2).replace('.', ',')}%
                     </p>
                   </div>
                 </div>
