@@ -35,6 +35,7 @@ interface ParcelaCalculada {
   taxaIntermediador: number;
   rendimentoIntermediador: number;
   rendimentoInvestidores: number;
+  valorRecebido?: number; // Adicionar campo para valor já recebido
 }
 
 interface ResumoMes {
@@ -137,24 +138,32 @@ const Reports = () => {
             investidores: emprestimo.emprestimo_parceiros || [],
             taxaIntermediador,
             rendimentoIntermediador,
-            rendimentoInvestidores
+            rendimentoInvestidores,
+            valorRecebido: 0
           };
 
-          // Verificar se já foi pago
-          const jaRecebido = pagamentosRecebidos.find(p => 
-            p.emprestimo_id === emprestimo.id && 
-            new Date(p.data_vencimento).getMonth() === proximoPagamento.getMonth() &&
-            new Date(p.data_vencimento).getFullYear() === proximoPagamento.getFullYear()
-          );
-
-          if (jaRecebido) {
-            const valorRecebido = jaRecebido.valor_recebido || 0;
-            const valorTotal = rendimentoTotal;
+          // CORREÇÃO: Melhor lógica para verificar pagamentos
+          // Buscar pagamentos para este empréstimo no mês/ano da parcela
+          const pagamentosEmprestimo = pagamentosRecebidos.filter(p => {
+            if (p.emprestimo_id !== emprestimo.id) return false;
             
-            if (valorRecebido >= valorTotal) {
+            const dataVencimentoPagamento = new Date(p.data_vencimento);
+            return dataVencimentoPagamento.getMonth() === proximoPagamento.getMonth() &&
+                   dataVencimentoPagamento.getFullYear() === proximoPagamento.getFullYear();
+          });
+
+          if (pagamentosEmprestimo.length > 0) {
+            // Somar todos os pagamentos para esta parcela
+            const valorTotalRecebido = pagamentosEmprestimo.reduce((sum, p) => 
+              sum + (parseFloat(p.valor_recebido) || 0), 0);
+            
+            parcela.valorRecebido = valorTotalRecebido;
+            
+            // Determinar status baseado no valor recebido vs valor esperado
+            if (valorTotalRecebido >= rendimentoTotal * 0.99) { // 99% para considerar tolerância
               parcela.status = 'pago';
-            } else if (valorRecebido > 0) {
-              parcela.status = 'parcial'; // Status visual para interface
+            } else if (valorTotalRecebido > 0) {
+              parcela.status = 'pendente'; // Parcialmente pago, mas ainda pendente
             }
           } else if (proximoPagamento < new Date()) {
             parcela.status = 'atrasado';
@@ -175,7 +184,7 @@ const Reports = () => {
     const parcelasMes = calcularParcelasDoMes(emprestimos, mesAtual);
     
     const totalPrevisto = parcelasMes.reduce((sum, p) => sum + p.valor, 0);
-    const totalRecebido = parcelasMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.valor, 0);
+    const totalRecebido = parcelasMes.reduce((sum, p) => sum + (p.valorRecebido || 0), 0);
     const totalPendente = totalPrevisto - totalRecebido;
     
     const rendimentoIntermediador = parcelasMes.reduce((sum, p) => sum + p.rendimentoIntermediador, 0);
@@ -190,29 +199,30 @@ const Reports = () => {
         parcela.investidores.forEach((inv: any) => {
           const nome = inv.nome_parceiro;
           // Calcular baseado no percentual de participação cadastrado
-          const valorInvestidor = (parcela.rendimentoInvestidores * inv.percentual_participacao) / 100;
+          const valorPrevistoInvestidor = (parcela.rendimentoInvestidores * inv.percentual_participacao) / 100;
+          const valorRecebidoInvestidor = parcela.status === 'pago' ? valorPrevistoInvestidor : 
+            (parcela.valorRecebido || 0) > 0 ? (valorPrevistoInvestidor * (parcela.valorRecebido || 0)) / parcela.valor : 0;
           
           if (!porInvestidor[nome]) {
             porInvestidor[nome] = { previsto: 0, recebido: 0, pendente: 0 };
           }
           
-          porInvestidor[nome].previsto += valorInvestidor;
-          if (parcela.status === 'pago') {
-            porInvestidor[nome].recebido += valorInvestidor;
-          }
+          porInvestidor[nome].previsto += valorPrevistoInvestidor;
+          porInvestidor[nome].recebido += valorRecebidoInvestidor;
           porInvestidor[nome].pendente = porInvestidor[nome].previsto - porInvestidor[nome].recebido;
         });
       } else {
-        // Fallback para empréstimos sem investidores cadastrados - todos os investidores recebem
+        // Fallback para empréstimos sem investidores cadastrados
         const nomeGenerico = "Investidores";
         if (!porInvestidor[nomeGenerico]) {
           porInvestidor[nomeGenerico] = { previsto: 0, recebido: 0, pendente: 0 };
         }
         
+        const valorRecebidoInvestidores = parcela.status === 'pago' ? parcela.rendimentoInvestidores :
+          (parcela.valorRecebido || 0) > 0 ? (parcela.rendimentoInvestidores * (parcela.valorRecebido || 0)) / parcela.valor : 0;
+        
         porInvestidor[nomeGenerico].previsto += parcela.rendimentoInvestidores;
-        if (parcela.status === 'pago') {
-          porInvestidor[nomeGenerico].recebido += parcela.rendimentoInvestidores;
-        }
+        porInvestidor[nomeGenerico].recebido += valorRecebidoInvestidores;
         porInvestidor[nomeGenerico].pendente = porInvestidor[nomeGenerico].previsto - porInvestidor[nomeGenerico].recebido;
       }
     });
@@ -245,18 +255,23 @@ const Reports = () => {
 
       if (loansError) throw loansError;
 
-      // Carregar pagamentos recebidos
+      // CORREÇÃO: Carregar TODOS os pagamentos, não apenas os com status 'pago'
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('recebimentos')
         .select('*')
-        .eq('status', 'pago');
+        .order('created_at', { ascending: false });
 
       if (paymentsError) throw paymentsError;
+
+      console.log('Empréstimos carregados:', loansData?.length);
+      console.log('Pagamentos carregados:', paymentsData?.length);
+      console.log('Dados dos pagamentos:', paymentsData);
 
       setEmprestimos(loansData || []);
       setPagamentosRecebidos(paymentsData || []);
 
     } catch (error: any) {
+      console.error('Erro ao carregar dados:', error);
       toast({
         title: "Erro ao carregar dados",
         description: error.message,
@@ -278,39 +293,31 @@ const Reports = () => {
     }
 
     try {
+      setSalvandoPagamento(true);
       const valor = parseFloat(valorPagamento);
       const parcela = modalPagamento.parcela;
-
-      // Determinar o status baseado no valor pago
-      let novoStatus = 'pendente';
-      if (valor >= parcela.valor) {
-        novoStatus = 'pago';
-      } else if (valor > 0) {
-        novoStatus = 'pendente'; // Manter como pendente até estar totalmente pago
-      }
 
       // Verificar se já existe um registro para este empréstimo e data
       const { data: existingPayment } = await supabase
         .from('recebimentos')
         .select('*')
         .eq('emprestimo_id', parcela.emprestimoId)
-        .eq('data_vencimento', parcela.dataVencimento.toISOString())
+        .eq('data_vencimento', format(parcela.dataVencimento, 'yyyy-MM-dd'))
         .single();
 
       let error;
+      let novoValorTotal = valor;
       
       if (existingPayment) {
         // Se já existe, somar com o valor anterior
-        const novoValorTotal = (existingPayment.valor_recebido || 0) + valor;
-        const novoStatusFinal = novoValorTotal >= parcela.valor ? 'pago' : 'pendente'; // Status real: pago ou pendente
+        novoValorTotal = (parseFloat(existingPayment.valor_recebido) || 0) + valor;
+        const novoStatusFinal = novoValorTotal >= parcela.valor * 0.99 ? 'pago' : 'pendente';
         
         const { error: updateError } = await supabase
           .from('recebimentos')
           .update({
-            valor_recebido: novoValorTotal,
+            valor_recebido: novoValorTotal.toString(),
             status: novoStatusFinal,
-            seu_valor: parcela.rendimentoIntermediador,
-            parceiro_valor: parcela.rendimentoInvestidores,
             observacoes: `${existingPayment.observacoes || ''}\nPagamento adicional de ${formatCurrency(valor)} em ${new Date().toLocaleDateString('pt-BR')}. Total: ${formatCurrency(novoValorTotal)}`
           })
           .eq('id', existingPayment.id);
@@ -318,17 +325,19 @@ const Reports = () => {
         error = updateError;
       } else {
         // Inserir novo registro
+        const novoStatus = valor >= parcela.valor * 0.99 ? 'pago' : 'pendente';
+        
         const { error: insertError } = await supabase
           .from('recebimentos')
           .insert({
             emprestimo_id: parcela.emprestimoId,
-            data_vencimento: parcela.dataVencimento.toISOString(),
-            valor_esperado: parcela.valor,
-            valor_recebido: valor,
+            data_vencimento: format(parcela.dataVencimento, 'yyyy-MM-dd'),
+            valor_esperado: parcela.valor.toString(),
+            valor_recebido: valor.toString(),
             status: novoStatus,
-            seu_valor: parcela.rendimentoIntermediador,
-            parceiro_valor: parcela.rendimentoInvestidores,
-            observacoes: `Pagamento ${novoStatus === 'parcial' ? 'parcial' : 'completo'} registrado em ${new Date().toLocaleDateString('pt-BR')}`
+            seu_valor: parcela.rendimentoIntermediador.toString(),
+            parceiro_valor: parcela.rendimentoInvestidores.toString(),
+            observacoes: `Pagamento ${novoStatus === 'pago' ? 'completo' : 'parcial'} registrado em ${new Date().toLocaleDateString('pt-BR')}`
           });
         
         error = insertError;
@@ -338,7 +347,7 @@ const Reports = () => {
 
       toast({
         title: "Pagamento registrado",
-        description: `Pagamento de ${formatCurrency(valor)} registrado com sucesso.`,
+        description: `Pagamento de ${formatCurrency(valor)} registrado com sucesso. Total recebido: ${formatCurrency(novoValorTotal)}`,
       });
 
       setModalPagamento({ aberto: false, parcela: null });
@@ -346,14 +355,16 @@ const Reports = () => {
       
       // Recarregar dados após registrar pagamento
       await loadData();
-      loadData(); // Recarregar dados
 
     } catch (error: any) {
+      console.error('Erro ao registrar pagamento:', error);
       toast({
         title: "Erro ao registrar pagamento",
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setSalvandoPagamento(false);
     }
   };
 
@@ -361,8 +372,6 @@ const Reports = () => {
     switch (status) {
       case 'pago':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'parcial':
-        return <Clock className="h-5 w-5 text-blue-500" />;
       case 'atrasado':
         return <XCircle className="h-5 w-5 text-red-500" />;
       default:
@@ -373,14 +382,12 @@ const Reports = () => {
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
       'pago': 'default',
-      'parcial': 'secondary',
       'atrasado': 'destructive',
       'pendente': 'secondary'
     };
     
     const labels: Record<string, string> = {
       'pago': 'PAGO',
-      'parcial': 'PARCIAL',
       'atrasado': 'ATRASADO',
       'pendente': 'PENDENTE'
     };
@@ -568,6 +575,11 @@ const Reports = () => {
                         {getStatusIcon(parcela.status)}
                         <h4 className="font-semibold text-lg">{parcela.devedor}</h4>
                         {getStatusBadge(parcela.status)}
+                        {(parcela.valorRecebido || 0) > 0 && parcela.status !== 'pago' && (
+                          <Badge variant="outline">
+                            Recebido: {formatCurrency(parcela.valorRecebido || 0)}
+                          </Badge>
+                        )}
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -584,6 +596,11 @@ const Reports = () => {
                         <div>
                           <p className="text-sm text-muted-foreground">Valor Total</p>
                           <p className="font-bold text-lg">{formatCurrency(parcela.valor)}</p>
+                          {(parcela.valorRecebido || 0) > 0 && (
+                            <p className="text-sm text-green-600">
+                              Recebido: {formatCurrency(parcela.valorRecebido || 0)}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -635,7 +652,9 @@ const Reports = () => {
                           onOpenChange={(aberto) => {
                             if (aberto) {
                               setModalPagamento({ aberto: true, parcela });
-                              setValorPagamento(parcela.valor.toString());
+                              // Sugerir o valor restante a ser pago
+                              const valorRestante = parcela.valor - (parcela.valorRecebido || 0);
+                              setValorPagamento(valorRestante.toString());
                             } else {
                               setModalPagamento({ aberto: false, parcela: null });
                               setValorPagamento('');
@@ -644,7 +663,7 @@ const Reports = () => {
                         >
                           <DialogTrigger asChild>
                             <Button className="bg-blue-600 hover:bg-blue-700">
-                              Registrar Pagamento
+                              {(parcela.valorRecebido || 0) > 0 ? 'Registrar Mais' : 'Registrar Pagamento'}
                             </Button>
                           </DialogTrigger>
                           <DialogContent>
@@ -674,11 +693,23 @@ const Reports = () => {
                                   <p className="text-sm text-muted-foreground">Tipo</p>
                                   <p className="font-medium capitalize">{parcela.tipo}</p>
                                 </div>
+                                {(parcela.valorRecebido || 0) > 0 && (
+                                  <>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Já Recebido</p>
+                                      <p className="font-medium text-green-600">{formatCurrency(parcela.valorRecebido || 0)}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">Restante</p>
+                                      <p className="font-medium text-yellow-600">{formatCurrency(parcela.valor - (parcela.valorRecebido || 0))}</p>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                               
                               <div>
                                 <label className="block text-sm font-medium mb-2">
-                                  Valor Recebido
+                                  Valor Recebido Agora
                                 </label>
                                 <Input
                                   type="number"
@@ -687,14 +718,25 @@ const Reports = () => {
                                   onChange={(e) => setValorPagamento(e.target.value)}
                                   placeholder="Digite o valor recebido"
                                 />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Este valor será {(parcela.valorRecebido || 0) > 0 ? 'somado ao valor já recebido' : 'registrado como primeiro pagamento'}
+                                </p>
                               </div>
 
                               <div className="flex space-x-2">
                                 <Button
                                   onClick={handleRegistrarPagamento}
+                                  disabled={salvandoPagamento}
                                   className="flex-1 bg-green-600 hover:bg-green-700"
                                 >
-                                  Confirmar Recebimento
+                                  {salvandoPagamento ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Salvando...
+                                    </>
+                                  ) : (
+                                    'Confirmar Recebimento'
+                                  )}
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -703,6 +745,7 @@ const Reports = () => {
                                     setValorPagamento('');
                                   }}
                                   className="flex-1"
+                                  disabled={salvandoPagamento}
                                 >
                                   Cancelar
                                 </Button>
@@ -785,13 +828,15 @@ const Reports = () => {
                     <div>
                       <span className="text-muted-foreground">Recebido:</span>
                       <p className="font-bold text-green-600">
-                        {formatCurrency(parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0))}
+                        {formatCurrency(parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0) + 
+                        parcelasDoMes.filter(p => p.status !== 'pago' && (p.valorRecebido || 0) > 0).reduce((sum, p) => sum + (p.rendimentoIntermediador * (p.valorRecebido || 0)) / p.valor, 0))}
                       </p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Pendente:</span>
                       <p className="font-bold text-yellow-600">
-                        {formatCurrency(parcelasDoMes.filter(p => p.status !== 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0))}
+                        {formatCurrency(resumoMes.rendimentoIntermediador - (parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0) + 
+                        parcelasDoMes.filter(p => p.status !== 'pago' && (p.valorRecebido || 0) > 0).reduce((sum, p) => sum + (p.rendimentoIntermediador * (p.valorRecebido || 0)) / p.valor, 0)))}
                       </p>
                     </div>
                   </div>
@@ -801,7 +846,8 @@ const Reports = () => {
                   <div className="font-bold text-xl text-purple-600">
                     {(() => {
                       const totalIntermediador = resumoMes.rendimentoIntermediador;
-                      const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0);
+                      const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0) + 
+                        parcelasDoMes.filter(p => p.status !== 'pago' && (p.valorRecebido || 0) > 0).reduce((sum, p) => sum + (p.rendimentoIntermediador * (p.valorRecebido || 0)) / p.valor, 0);
                       return totalIntermediador > 0 ? ((recebidoIntermediador / totalIntermediador) * 100).toFixed(1) : 0;
                     })()}%
                   </div>
@@ -811,7 +857,8 @@ const Reports = () => {
                       style={{ 
                         width: `${(() => {
                           const totalIntermediador = resumoMes.rendimentoIntermediador;
-                          const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0);
+                          const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0) + 
+                            parcelasDoMes.filter(p => p.status !== 'pago' && (p.valorRecebido || 0) > 0).reduce((sum, p) => sum + (p.rendimentoIntermediador * (p.valorRecebido || 0)) / p.valor, 0);
                           return totalIntermediador > 0 ? Math.min((recebidoIntermediador / totalIntermediador) * 100, 100) : 0;
                         })()}%` 
                       }}
