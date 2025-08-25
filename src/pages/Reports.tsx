@@ -332,12 +332,35 @@ const Reports = () => {
       const valor = parseFloat(valorPagamento);
       const parcela = modalPagamento.parcela;
 
-      // VALIDAÇÃO: Não permitir valor maior que o restante a ser pago
+      // VALIDAÇÃO CRÍTICA 1: Não permitir valor maior que o restante a ser pago
       const valorRestante = parcela.valor - (parcela.valorRecebido || 0);
-      if (valor > valorRestante + 0.01) { // Tolerância de 1 centavo
+      if (valor > valorRestante + 0.01) {
         toast({
           title: "Valor inválido",
           description: `O valor não pode ser maior que o restante a ser pago: ${formatCurrency(valorRestante)}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // VALIDAÇÃO CRÍTICA 2: Verificar se a distribuição confere com o valor total
+      const totalDistribuicao = distribuicaoPagamento.intermediador + 
+        Object.values(distribuicaoPagamento.investidores).reduce((sum, val) => sum + val, 0);
+      
+      if (Math.abs(totalDistribuicao - valor) > 0.01) {
+        toast({
+          title: "Distribuição inválida",
+          description: `A soma da distribuição (${formatCurrency(totalDistribuicao)}) deve ser igual ao valor do pagamento (${formatCurrency(valor)})`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // VALIDAÇÃO CRÍTICA 3: A distribuição não pode exceder o valor restante
+      if (totalDistribuicao > valorRestante + 0.01) {
+        toast({
+          title: "Distribuição excede limite",
+          description: `A distribuição total (${formatCurrency(totalDistribuicao)}) não pode exceder o valor restante (${formatCurrency(valorRestante)})`,
           variant: "destructive",
         });
         return;
@@ -367,7 +390,7 @@ const Reports = () => {
         // Se já existe, somar com o valor anterior
         novoValorTotal = (parseFloat(existingPayment.valor_recebido) || 0) + valor;
         
-        // VALIDAÇÃO: Não permitir que o total exceda o valor esperado
+        // VALIDAÇÃO CRÍTICA 4: Não permitir que o total exceda o valor esperado
         if (novoValorTotal > parcela.valor + 0.01) {
           toast({
             title: "Valor total inválido",
@@ -379,17 +402,15 @@ const Reports = () => {
         
         const novoStatusFinal = novoValorTotal >= parcela.valor * 0.99 ? 'pago' : 'pendente';
         
-        // Calcular nova distribuição total
-        const novaDistribuicao = calcularDistribuicaoPagamento(parcela, novoValorTotal);
-        
+        // Usar a distribuição manual feita pelo usuário
         const { error: updateError } = await supabase
           .from('recebimentos')
           .update({
             valor_recebido: novoValorTotal.toString(),
             status: novoStatusFinal,
-            seu_valor: novaDistribuicao.intermediador.toString(),
-            parceiro_valor: Object.values(novaDistribuicao.investidores).reduce((sum, val) => sum + val, 0).toString(),
-            observacoes: `${existingPayment.observacoes || ''}\nPagamento adicional de ${formatCurrency(valor)} em ${new Date().toLocaleDateString('pt-BR')}. Total: ${formatCurrency(novoValorTotal)}`
+            seu_valor: distribuicaoPagamento.intermediador.toString(),
+            parceiro_valor: Object.values(distribuicaoPagamento.investidores).reduce((sum, val) => sum + val, 0).toString(),
+            observacoes: `${existingPayment.observacoes || ''}\nPagamento adicional de ${formatCurrency(valor)} em ${new Date().toLocaleDateString('pt-BR')}. Total: ${formatCurrency(novoValorTotal)}. Distribuição: ${Object.entries(distribuicaoPagamento.investidores).map(([nome, valor]) => `${nome}: ${formatCurrency(valor)}`).join(', ')}, Intermediador: ${formatCurrency(distribuicaoPagamento.intermediador)}`
           })
           .eq('id', existingPayment.id);
         
@@ -794,6 +815,19 @@ const Reports = () => {
                                   value={valorPagamento}
                                   onChange={(e) => {
                                     const novoValor = e.target.value;
+                                    const valorNumerico = parseFloat(novoValor) || 0;
+                                    const valorMaximo = parcela.valor - (parcela.valorRecebido || 0);
+                                    
+                                    // Validar se não excede o máximo
+                                    if (valorNumerico > valorMaximo) {
+                                      toast({
+                                        title: "Valor inválido",
+                                        description: `O valor não pode ser maior que ${formatCurrency(valorMaximo)}`,
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
+                                    
                                     setValorPagamento(novoValor);
                                     atualizarDistribuicao(novoValor, parcela);
                                   }}
