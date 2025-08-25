@@ -446,9 +446,11 @@ const Dashboard = () => {
 
   const navegarParaAnaliseDetalhada = (tipo: 'investidor' | 'devedor', filtro?: string) => {
     if (tipo === 'investidor') {
-      navigate('/investidores', { state: { filtroNome: filtro } });
+      // Navegar para a página de empréstimos com filtro de investidor
+      navigate('/loans', { state: { filtroInvestidor: filtro } });
     } else {
-      navigate('/emprestimos', { state: { filtroDevedor: filtro } });
+      // Navegar para a página de empréstimos com filtro de devedor
+      navigate('/loans', { state: { filtroDevedor: filtro } });
     }
   };
 
