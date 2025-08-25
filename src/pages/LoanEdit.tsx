@@ -84,7 +84,7 @@ const LoanEdit = () => {
     });
   };
 
-  // Funções de formatação melhoradas
+  // Funções de formatação
   const formatarValorMonetario = (valor: string) => {
     const apenasNumeros = valor.replace(/\D/g, '');
     if (!apenasNumeros) return 0;
@@ -112,36 +112,6 @@ const LoanEdit = () => {
   const exibirPercentualFormatado = (valor: number) => {
     if (valor === 0) return '';
     return valor.toFixed(2).replace('.', ',');
-  };
-
-  // Função para formatar valor monetário durante a digitação
-  const formatarValorMonetario = (valor: string) => {
-    const apenasNumeros = valor.replace(/\D/g, '');
-    const numero = parseInt(apenasNumeros) || 0;
-    const reais = numero / 100;
-    return reais;
-  };
-
-  // Função para formatar percentual durante a digitação
-  const formatarPercentual = (valor: string) => {
-    let numeros = valor.replace(/[^\d.,]/g, '');
-    numeros = numeros.replace(',', '.');
-    
-    const partes = numeros.split('.');
-    if (partes[1] && partes[1].length > 2) {
-      numeros = partes[0] + '.' + partes[1].substring(0, 2);
-    }
-    
-    const numero = parseFloat(numeros) || 0;
-    return Math.min(numero, 100);
-  };
-
-  // Função para exibir valor formatado no input
-  const exibirValorFormatado = (valor: number) => {
-    return valor.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
   };
 
   const loadEmprestimo = async () => {
@@ -503,7 +473,7 @@ const LoanEdit = () => {
                 <Input
                   id="taxa_mensal"
                   type="text"
-                  value={emprestimo.taxa_mensal.toFixed(2).replace('.', ',')}
+                  value={exibirPercentualFormatado(emprestimo.taxa_mensal)}
                   onChange={(e) => {
                     const percentualFormatado = formatarPercentual(e.target.value);
                     setEmprestimo({...emprestimo, taxa_mensal: percentualFormatado});
@@ -603,7 +573,7 @@ const LoanEdit = () => {
               <Input
                 id="taxa_intermediador"
                 type="text"
-                value={emprestimo.taxa_intermediador.toFixed(2).replace('.', ',')}
+                value={exibirPercentualFormatado(emprestimo.taxa_intermediador)}
                 onChange={(e) => {
                   const percentualFormatado = formatarPercentual(e.target.value);
                   setEmprestimo({...emprestimo, taxa_intermediador: percentualFormatado});
@@ -699,7 +669,7 @@ const LoanEdit = () => {
                         <Label>Participação (%)</Label>
                         <Input
                           type="text"
-                          value={parceiro.percentual_participacao.toFixed(2).replace('.', ',')}
+                          value={exibirPercentualFormatado(parceiro.percentual_participacao)}
                           onChange={(e) => {
                             const percentualFormatado = formatarPercentual(e.target.value);
                             atualizarParceiro(index, 'percentual_participacao', percentualFormatado);
