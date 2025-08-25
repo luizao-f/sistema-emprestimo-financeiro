@@ -147,10 +147,13 @@ const Reports = () => {
           );
 
           if (jaRecebido) {
-            if (jaRecebido.status === 'pago') {
+            const valorRecebido = jaRecebido.valor_recebido || 0;
+            const valorTotal = rendimentoTotal;
+            
+            if (valorRecebido >= valorTotal) {
               parcela.status = 'pago';
-            } else if (jaRecebido.status === 'parcial') {
-              parcela.status = 'parcial';
+            } else if (valorRecebido > 0) {
+              parcela.status = 'parcial'; // Status visual para interface
             }
           } else if (proximoPagamento < new Date()) {
             parcela.status = 'atrasado';
@@ -282,7 +285,7 @@ const Reports = () => {
       if (valor >= parcela.valor) {
         novoStatus = 'pago';
       } else if (valor > 0) {
-        novoStatus = 'parcial';
+        novoStatus = 'pendente'; // Manter como pendente até estar totalmente pago
       }
 
       // Verificar se já existe um registro para este empréstimo e data
@@ -298,7 +301,7 @@ const Reports = () => {
       if (existingPayment) {
         // Se já existe, somar com o valor anterior
         const novoValorTotal = (existingPayment.valor_recebido || 0) + valor;
-        const novoStatusFinal = novoValorTotal >= parcela.valor ? 'pago' : 'parcial';
+        const novoStatusFinal = novoValorTotal >= parcela.valor ? 'pago' : 'pendente'; // Status real: pago ou pendente
         
         const { error: updateError } = await supabase
           .from('recebimentos')
