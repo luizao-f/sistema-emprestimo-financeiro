@@ -109,7 +109,7 @@ const LoanEdit = () => {
       setEmprestimo({
         ...emprestimoData,
         data_emprestimo: emprestimoData.data_emprestimo ? 
-          format(new Date(emprestimoData.data_emprestimo), 'yyyy-MM-dd') : 
+          emprestimoData.data_emprestimo.split('T')[0] : 
           new Date().toISOString().split('T')[0]
       });
 

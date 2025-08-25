@@ -142,7 +142,9 @@ const Reports = () => {
           // Verificar se já foi pago
           const jaRecebido = pagamentosRecebidos.find(p => 
             p.emprestimo_id === emprestimo.id && 
-            isSameMonth(parseISO(p.data_pagamento), proximoPagamento)
+            new Date(p.data_vencimento).getMonth() === proximoPagamento.getMonth() &&
+            new Date(p.data_vencimento).getFullYear() === proximoPagamento.getFullYear() &&
+            p.status === 'pago'
           );
 
           if (jaRecebido) {
@@ -278,13 +280,15 @@ const Reports = () => {
         .upsert({
           emprestimo_id: parcela.emprestimoId,
           data_vencimento: parcela.dataVencimento.toISOString(),
-          data_pagamento: new Date().toISOString(),
           valor_esperado: parcela.valor,
           valor_recebido: valor,
           status: 'pago',
           // Distribuir valores conforme configuração
           seu_valor: parcela.rendimentoIntermediador,
-          parceiro_valor: parcela.rendimentoInvestidores
+          parceiro_valor: parcela.rendimentoInvestidores,
+          observacoes: `Pagamento registrado em ${new Date().toLocaleDateString('pt-BR')}`
+        }, {
+          onConflict: 'emprestimo_id,data_vencimento'
         });
 
       if (error) throw error;
@@ -672,23 +676,93 @@ const Reports = () => {
           <CardContent>
             <div className="space-y-4">
               {Object.entries(resumoMes.porInvestidor).map(([nome, valores]) => (
-                <div key={nome} className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                <div key={nome} className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                   <div className="flex-1">
-                    <h4 className="font-semibold">{nome}</h4>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Previsto: {formatCurrency(valores.previsto)} • 
-                      Recebido: {formatCurrency(valores.recebido)} • 
-                      Pendente: {formatCurrency(valores.pendente)}
+                    <div className="flex items-center gap-3">
+                      <Users className="h-5 w-5 text-green-600" />
+                      <h4 className="font-semibold text-lg">{nome}</h4>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Previsto:</span>
+                        <p className="font-bold text-blue-600">{formatCurrency(valores.previsto)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Recebido:</span>
+                        <p className="font-bold text-green-600">{formatCurrency(valores.recebido)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Pendente:</span>
+                        <p className="font-bold text-yellow-600">{formatCurrency(valores.pendente)}</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right ml-4">
                     <div className="text-sm text-muted-foreground">Progresso</div>
-                    <div className="font-bold text-blue-600">
+                    <div className="font-bold text-xl text-blue-600">
                       {valores.previsto > 0 ? ((valores.recebido / valores.previsto) * 100).toFixed(1) : 0}%
+                    </div>
+                    <div className="w-24 bg-gray-200 rounded-full h-2 mt-2">
+                      <div 
+                        className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ 
+                          width: `${valores.previsto > 0 ? Math.min((valores.recebido / valores.previsto) * 100, 100) : 0}%` 
+                        }}
+                      ></div>
                     </div>
                   </div>
                 </div>
               ))}
+              
+              {/* Card do Intermediador */}
+              <div className="flex items-center justify-between p-4 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <Target className="h-5 w-5 text-purple-600" />
+                    <h4 className="font-semibold text-lg">Intermediador</h4>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Previsto:</span>
+                      <p className="font-bold text-blue-600">{formatCurrency(resumoMes.rendimentoIntermediador)}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Recebido:</span>
+                      <p className="font-bold text-green-600">
+                        {formatCurrency(parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0))}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Pendente:</span>
+                      <p className="font-bold text-yellow-600">
+                        {formatCurrency(parcelasDoMes.filter(p => p.status !== 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0))}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right ml-4">
+                  <div className="text-sm text-muted-foreground">Progresso</div>
+                  <div className="font-bold text-xl text-purple-600">
+                    {(() => {
+                      const totalIntermediador = resumoMes.rendimentoIntermediador;
+                      const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0);
+                      return totalIntermediador > 0 ? ((recebidoIntermediador / totalIntermediador) * 100).toFixed(1) : 0;
+                    })()}%
+                  </div>
+                  <div className="w-24 bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-purple-600 h-2 rounded-full transition-all duration-300" 
+                      style={{ 
+                        width: `${(() => {
+                          const totalIntermediador = resumoMes.rendimentoIntermediador;
+                          const recebidoIntermediador = parcelasDoMes.filter(p => p.status === 'pago').reduce((sum, p) => sum + p.rendimentoIntermediador, 0);
+                          return totalIntermediador > 0 ? Math.min((recebidoIntermediador / totalIntermediador) * 100, 100) : 0;
+                        })()}%` 
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
