@@ -192,20 +192,35 @@ const Reports = () => {
 
   const calcularProximoPagamento = (dataEmprestimo: Date, tipoPagamento: string, numeroMes: number): Date => {
     const data = new Date(dataEmprestimo);
+    const diaOriginal = data.getDate();
+    const mesOriginal = data.getMonth();
+    const anoOriginal = data.getFullYear();
+    
+    let novoMes, novoAno;
     
     switch (tipoPagamento) {
       case 'trimestral':
-        data.setMonth(data.getMonth() + (numeroMes * 3));
+        const totalMesesTrimestral = numeroMes * 3;
+        novoAno = anoOriginal + Math.floor((mesOriginal + totalMesesTrimestral) / 12);
+        novoMes = (mesOriginal + totalMesesTrimestral) % 12;
         break;
       case 'anual':
-        data.setFullYear(data.getFullYear() + numeroMes);
+        novoAno = anoOriginal + numeroMes;
+        novoMes = mesOriginal;
         break;
       default: // mensal
-        data.setMonth(data.getMonth() + numeroMes);
+        novoAno = anoOriginal + Math.floor((mesOriginal + numeroMes) / 12);
+        novoMes = (mesOriginal + numeroMes) % 12;
         break;
     }
     
-    return data;
+    // Calcular o último dia do mês de destino
+    const ultimoDiaDoMes = new Date(novoAno, novoMes + 1, 0).getDate();
+    
+    // Usar o dia original ou o último dia do mês, o que for menor
+    const diaFinal = Math.min(diaOriginal, ultimoDiaDoMes);
+    
+    return new Date(novoAno, novoMes, diaFinal);
   };
 
   const calcularParcelasDoMes = (emprestimos: any[], mes: Date): ParcelaCalculada[] => {
@@ -219,10 +234,12 @@ const Reports = () => {
       const dataEmprestimo = parseISO(emprestimo.data_emprestimo);
       const tipoPagamento = emprestimo.tipo_pagamento || 'mensal';
       
-      let numeroMes = 0;
+      let numeroMes = 1;
       let proximoPagamento = calcularProximoPagamento(dataEmprestimo, tipoPagamento, numeroMes);
       
-      while (proximoPagamento <= fimMes && numeroMes < 120) {
+      // Limitar a 120 iterações para evitar loops infinitos
+      while (numeroMes <= 120) {
+        // Verificar se o pagamento está no mês desejado
         if (proximoPagamento >= inicioMes && proximoPagamento <= fimMes) {
           const taxaMensal = emprestimo.taxa_mensal || 0;
           const taxaIntermediador = emprestimo.taxa_intermediador || 0;
@@ -263,7 +280,7 @@ const Reports = () => {
             taxaMensalTotal: taxaMensal
           };
 
-          // Verificar pagamentos
+          // Verificar pagamentos realizados
           const pagamentosEmprestimo = pagamentosRecebidos.filter(p => {
             if (p.emprestimo_id !== emprestimo.id) return false;
             
@@ -288,6 +305,11 @@ const Reports = () => {
           }
 
           parcelas.push(parcela);
+        }
+        
+        // Parar se o próximo pagamento for muito no futuro
+        if (proximoPagamento > endOfMonth(addMonths(mes, 36))) {
+          break;
         }
         
         numeroMes++;
