@@ -81,12 +81,18 @@ const Reports = () => {
 
   // Nova função para arredondar valores de forma inteligente
   const arredondarValor = (valor: number): number => {
-    // Se o valor for muito próximo de um número inteiro, arredonda
-    if (Math.abs(valor - Math.round(valor)) < 0.05) {
+    // Para valores grandes (> 1000), arredondar para centenas
+    if (valor > 1000) {
+      return Math.round(valor / 100) * 100;
+    }
+    // Para valores médios (> 100), arredondar para dezenas
+    else if (valor > 100) {
+      return Math.round(valor / 10) * 10;
+    }
+    // Para valores pequenos, arredondar normalmente
+    else {
       return Math.round(valor);
     }
-    // Senão, arredonda para 2 casas decimais
-    return Math.round(valor * 100) / 100;
   };
 
   // Função melhorada para distribuir valores entre investidores de forma mais equilibrada
@@ -94,29 +100,59 @@ const Reports = () => {
     if (!investidores || investidores.length === 0) return {};
 
     const distribuicao: Record<string, number> = {};
-    let valorRestante = valorTotal;
     
-    // Primeiro, calcular os valores proporcionais
-    const valoresProporcionais = investidores.map(inv => ({
-      nome: inv.nome_parceiro,
-      percentual: inv.percentual_participacao,
-      valorCalculado: (valorTotal * inv.percentual_participacao) / 100
-    }));
-
-    // Arredondar os valores e ajustar diferenças
-    let somaArredondada = 0;
-    valoresProporcionais.forEach(item => {
-      const valorArredondado = arredondarValor(item.valorCalculado);
-      distribuicao[item.nome] = valorArredondado;
-      somaArredondada += valorArredondado;
-    });
-
-    // Ajustar diferença no último investidor se necessário
-    const diferenca = valorTotal - somaArredondada;
-    if (Math.abs(diferenca) > 0.01 && valoresProporcionais.length > 0) {
-      const ultimoInvestidor = valoresProporcionais[valoresProporcionais.length - 1];
-      distribuicao[ultimoInvestidor.nome] += diferenca;
-      distribuicao[ultimoInvestidor.nome] = arredondarValor(distribuicao[ultimoInvestidor.nome]);
+    // Para investidores com percentuais iguais ou similares (diferença < 1%), distribuir igualmente
+    const percentuais = investidores.map(inv => inv.percentual_participacao).sort((a, b) => a - b);
+    const diferencaMaxima = percentuais[percentuais.length - 1] - percentuais[0];
+    
+    if (diferencaMaxima < 1 && investidores.length > 1) {
+      // Distribuição igual entre todos
+      const valorPorInvestidor = Math.round(valorTotal / investidores.length);
+      let somaDistribuida = 0;
+      
+      investidores.forEach((inv, index) => {
+        if (index === investidores.length - 1) {
+          // Último investidor recebe o que sobrou para garantir soma exata
+          distribuicao[inv.nome_parceiro] = valorTotal - somaDistribuida;
+        } else {
+          distribuicao[inv.nome_parceiro] = valorPorInvestidor;
+          somaDistribuida += valorPorInvestidor;
+        }
+      });
+    } else {
+      // Distribuição proporcional normal, mas com arredondamento inteligente
+      let valorRestante = valorTotal;
+      let investidoresRestantes = [...investidores];
+      
+      // Ordenar por percentual decrescente para distribuir primeiro os maiores
+      investidoresRestantes.sort((a, b) => b.percentual_participacao - a.percentual_participacao);
+      
+      investidoresRestantes.forEach((inv, index) => {
+        if (index === investidoresRestantes.length - 1) {
+          // Último investidor recebe o que sobrou
+          distribuicao[inv.nome_parceiro] = valorRestante;
+        } else {
+          let valorCalculado = (valorTotal * inv.percentual_participacao) / 100;
+          
+          // Arredondar para o valor mais próximo que faz sentido
+          if (valorCalculado > 100) {
+            // Para valores grandes, arredondar para dezenas ou centenas
+            if (valorCalculado > 1000) {
+              valorCalculado = Math.round(valorCalculado / 100) * 100;
+            } else {
+              valorCalculado = Math.round(valorCalculado / 10) * 10;
+            }
+          } else {
+            valorCalculado = Math.round(valorCalculado);
+          }
+          
+          // Garantir que não exceda o valor restante
+          valorCalculado = Math.min(valorCalculado, valorRestante);
+          
+          distribuicao[inv.nome_parceiro] = valorCalculado;
+          valorRestante -= valorCalculado;
+        }
+      });
     }
 
     return distribuicao;
@@ -199,8 +235,12 @@ const Reports = () => {
           }
           
           // Calcular rendimentos com arredondamento inteligente
-          const rendimentoTotal = arredondarValor(emprestimo.valor_total * (taxaMensal / 100) * mesesAcumulados);
-          const rendimentoIntermediador = arredondarValor(emprestimo.valor_total * (taxaIntermediador / 100) * mesesAcumulados);
+          const rendimentoTotalBruto = emprestimo.valor_total * (taxaMensal / 100) * mesesAcumulados;
+          const rendimentoIntermediadorBruto = emprestimo.valor_total * (taxaIntermediador / 100) * mesesAcumulados;
+          
+          // Arredondar os rendimentos
+          const rendimentoIntermediador = arredondarValor(rendimentoIntermediadorBruto);
+          const rendimentoTotal = arredondarValor(rendimentoTotalBruto);
           const rendimentoInvestidores = rendimentoTotal - rendimentoIntermediador;
 
           const parcela: ParcelaCalculada = {
