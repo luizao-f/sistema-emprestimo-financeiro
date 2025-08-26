@@ -360,22 +360,42 @@ const Reports = () => {
     const mesFormatado = format(mesAtual, 'MMMM/yyyy', { locale: ptBR });
     const mesCapitalizado = mesFormatado.charAt(0).toUpperCase() + mesFormatado.slice(1);
     
-    let resumo = `---- Investimentos de ${mesCapitalizado} ----\n\n`;
+    let resumo = `---- Investimentos de ${mesCapitalizado} ----\n`;
     
     if (parcelasDoMes.length === 0) {
       resumo += "Nenhum investimento com vencimento neste mês.\n";
     } else {
-      parcelasDoMes.forEach((parcela, index) => {
-        const tipoFormatado = parcela.tipo.charAt(0).toUpperCase() + parcela.tipo.slice(1);
-        resumo += `${parcela.devedor}:\n`;
-        resumo += `Valor: R$ ${parcela.valorTotalEmprestimo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, `;
-        resumo += `Tipo: ${tipoFormatado}, `;
-        resumo += `Rendimento: R$ ${parcela.rendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
-        if (index < parcelasDoMes.length - 1) resumo += '\n';
+      // Agrupar por devedor
+      const parcelasPorDevedor = parcelasDoMes.reduce((acc, parcela) => {
+        const devedor = parcela.devedor;
+        if (!acc[devedor]) {
+          acc[devedor] = [];
+        }
+        acc[devedor].push(parcela);
+        return acc;
+      }, {} as Record<string, typeof parcelasDoMes>);
+
+      // Ordenar devedores alfabeticamente
+      const devedoresOrdenados = Object.keys(parcelasPorDevedor).sort();
+      
+      devedoresOrdenados.forEach((devedor, devedorIndex) => {
+        resumo += `${devedor}:\n`;
+        const parcelas = parcelasPorDevedor[devedor];
+        
+        parcelas.forEach((parcela, parcelaIndex) => {
+          const tipoFormatado = parcela.tipo.charAt(0).toUpperCase() + parcela.tipo.slice(1);
+          const numeroInvestimento = parcelas.length > 1 ? `Invest_${String(parcelaIndex + 1).padStart(2, '0')}` : 'Investimento';
+          
+          resumo += `${numeroInvestimento}: R$ ${parcela.valorTotalEmprestimo.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}, `;
+          resumo += `Tipo: ${tipoFormatado}, `;
+          resumo += `Rendimento: R$ ${parcela.rendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}\n`;
+        });
+        
+        if (devedorIndex < devedoresOrdenados.length - 1) resumo += '\n';
       });
       
       const totalRendimentoInvestidores = parcelasDoMes.reduce((sum, p) => sum + p.rendimentoInvestidores, 0);
-      resumo += `\n---- TOTAL RENDIMENTO: R$ ${totalRendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ----`;
+      resumo += `\n---- TOTAL RENDIMENTO: R$ ${totalRendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ----`;
     }
     
     return resumo;
@@ -640,15 +660,62 @@ const Reports = () => {
                   Baseado nas datas de cadastro dos empréstimos
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setMesAtual(new Date())}
-                className="flex items-center gap-2"
-              >
-                <Calendar className="h-4 w-4" />
-                Hoje
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMesAtual(new Date())}
+                  className="flex items-center gap-2"
+                >
+                  <Calendar className="h-4 w-4" />
+                  Hoje
+                </Button>
+                
+                {/* Modal do Resumo para Investidores */}
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex items-center gap-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Resumo p/ Investidores
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-blue-600" />
+                        Resumo para Investidores
+                      </DialogTitle>
+                      <DialogDescription>
+                        Resumo formatado dos investimentos do mês para envio
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border max-h-96 overflow-auto">
+                        <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono leading-relaxed">
+                          {gerarResumoParaCopia}
+                        </pre>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Info className="h-4 w-4" />
+                          <span>Valores já descontam a taxa do intermediador</span>
+                        </div>
+                        <Button
+                          onClick={copiarResumo}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Copiar Resumo
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
             
             <Button
@@ -659,44 +726,6 @@ const Reports = () => {
               Próximo Mês
               <ChevronRight className="h-4 w-4" />
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Resumo para Cópia */}
-      <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-blue-600" />
-              <CardTitle className="text-blue-800 dark:text-blue-200">
-                Resumo para Investidores
-              </CardTitle>
-            </div>
-            <Button
-              onClick={copiarResumo}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              size="sm"
-            >
-              <Copy className="h-4 w-4 mr-2" />
-              Copiar Resumo
-            </Button>
-          </div>
-          <CardDescription className="text-blue-600 dark:text-blue-300">
-            Resumo formatado dos investimentos do mês para envio aos investidores
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
-            <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono leading-relaxed">
-              {gerarResumoParaCopia}
-            </pre>
-          </div>
-          <div className="flex items-center gap-2 mt-3 text-xs text-blue-600 dark:text-blue-300">
-            <Info className="h-4 w-4" />
-            <span>
-              Valores já descontam a taxa do intermediador. Clique em "Copiar Resumo" e cole no WhatsApp ou email.
-            </span>
           </div>
         </CardContent>
       </Card>
