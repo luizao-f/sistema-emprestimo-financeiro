@@ -19,7 +19,9 @@ import {
   DollarSign,
   Target,
   Loader2,
-  Info
+  Info,
+  Copy,
+  FileText
 } from 'lucide-react';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, parseISO, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -353,6 +355,49 @@ const Reports = () => {
     return calcularParcelasDoMes(emprestimos, mesAtual);
   }, [emprestimos, pagamentosRecebidos, mesAtual]);
 
+  // Gerar resumo formatado para cópia
+  const gerarResumoParaCopia = useMemo(() => {
+    const mesFormatado = format(mesAtual, 'MMMM/yyyy', { locale: ptBR });
+    const mesCapitalizado = mesFormatado.charAt(0).toUpperCase() + mesFormatado.slice(1);
+    
+    let resumo = `---- Investimentos de ${mesCapitalizado} ----\n\n`;
+    
+    if (parcelasDoMes.length === 0) {
+      resumo += "Nenhum investimento com vencimento neste mês.\n";
+    } else {
+      parcelasDoMes.forEach((parcela, index) => {
+        const tipoFormatado = parcela.tipo.charAt(0).toUpperCase() + parcela.tipo.slice(1);
+        resumo += `${parcela.devedor}:\n`;
+        resumo += `Valor: R$ ${parcela.valorTotalEmprestimo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}, `;
+        resumo += `Tipo: ${tipoFormatado}, `;
+        resumo += `Rendimento: R$ ${parcela.rendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n`;
+        if (index < parcelasDoMes.length - 1) resumo += '\n';
+      });
+      
+      const totalRendimentoInvestidores = parcelasDoMes.reduce((sum, p) => sum + p.rendimentoInvestidores, 0);
+      resumo += `\n---- TOTAL RENDIMENTO: R$ ${totalRendimentoInvestidores.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ----`;
+    }
+    
+    return resumo;
+  }, [parcelasDoMes, mesAtual]);
+
+  const copiarResumo = async () => {
+    try {
+      await navigator.clipboard.writeText(gerarResumoParaCopia);
+      toast({
+        title: "Resumo copiado!",
+        description: "O resumo foi copiado para a área de transferência.",
+      });
+    } catch (error) {
+      console.error('Erro ao copiar:', error);
+      toast({
+        title: "Erro ao copiar",
+        description: "Não foi possível copiar o resumo. Tente novamente.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -614,6 +659,44 @@ const Reports = () => {
               Próximo Mês
               <ChevronRight className="h-4 w-4" />
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Resumo para Cópia */}
+      <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              <CardTitle className="text-blue-800 dark:text-blue-200">
+                Resumo para Investidores
+              </CardTitle>
+            </div>
+            <Button
+              onClick={copiarResumo}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              size="sm"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              Copiar Resumo
+            </Button>
+          </div>
+          <CardDescription className="text-blue-600 dark:text-blue-300">
+            Resumo formatado dos investimentos do mês para envio aos investidores
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+            <pre className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap font-mono leading-relaxed">
+              {gerarResumoParaCopia}
+            </pre>
+          </div>
+          <div className="flex items-center gap-2 mt-3 text-xs text-blue-600 dark:text-blue-300">
+            <Info className="h-4 w-4" />
+            <span>
+              Valores já descontam a taxa do intermediador. Clique em "Copiar Resumo" e cole no WhatsApp ou email.
+            </span>
           </div>
         </CardContent>
       </Card>
