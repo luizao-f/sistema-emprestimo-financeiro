@@ -1,0 +1,66 @@
+name: 🔄 Manter Supabase Ativo
+
+on:
+  schedule:
+    # Executa segunda e quinta às 9h UTC (6h no Brasil)
+    - cron: '0 9 * * 1,4'
+  
+  # Permite executar manualmente para testes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    
+    # Timeout de 1 minuto
+    timeout-minutes: 1
+    
+    steps:
+      # Step 1: Fazer o ping com máxima segurança
+      - name: 🚀 Executar Keep-Alive no Supabase
+        env:
+          # Os secrets são automaticamente mascarados nos logs
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Executar INSERT (mais confiável que SELECT para manter ativo)
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "${SUPABASE_URL}/rest/v1/keep_alive_log" \
+            -H "Content-Type: application/json" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -d '{"source":"github-actions"}')
+          
+          # Extrair código HTTP (última linha)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          
+          # Verificar resposta
+          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Supabase Keep-Alive executado com sucesso!"
+            echo "Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            exit 0
+          else
+            echo "❌ Erro ao executar keep-alive. HTTP Code: $HTTP_CODE"
+            echo "Response: $(echo "$RESPONSE" | head -n -1)"
+            exit 1
+          fi
+      
+      # Step 2: Notificar sucesso
+      - name: ✅ Sucesso
+        if: success()
+        run: |
+          echo "🎉 Projeto Supabase mantido ativo!"
+          echo "Próxima execução: quinta-feira às 6h (horário de Brasília)"
+      
+      # Step 3: Notificar erro
+      - name: ❌ Erro
+        if: failure()
+        run: |
+          echo "⚠️ Falha ao manter Supabase ativo"
+          echo "Verifique:"
+          echo "1. Secrets estão configurados corretamente"
+          echo "2. Tabela 'keep_alive_log' existe no Supabase"
+          echo "3. Política de RLS permite INSERT"
