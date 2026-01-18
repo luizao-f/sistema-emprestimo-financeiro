@@ -18,12 +18,12 @@ jobs:
       - name: 🚀 Ping Supabase Database (SELECT simples)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           echo "📍 Iniciando keep-alive do Supabase..."
           echo "⏰ Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           
-          # Fazer SELECT simples (mais confiável que INSERT)
+          # Fazer SELECT simples na tabela (mais confiável que INSERT)
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             -X GET "${SUPABASE_URL}/rest/v1/keep_alive_log?select=id&limit=1" \
             -H "apikey: ${SUPABASE_KEY}" \
@@ -44,12 +44,24 @@ jobs:
             exit 1
           fi
       
-      - name: ✅ Sucesso
+      - name: ✅ Sucesso - Registrar
         if: success()
-        run: echo "🎉 Keep-Alive executado com sucesso!"
+        run: |
+          echo "🎉 Keep-Alive executado com sucesso!"
+          echo "⏭️  Próxima execução: próximo domingo ou sexta-feira"
       
-      - name: ❌ Erro
+      - name: ❌ Erro - Verificar Logs
         if: failure()
         run: |
           echo "⚠️  FALHA ao executar keep-alive!"
-          echo "Verifique: Secrets, RLS, Tabela"
+          echo ""
+          echo "Possíveis causas:"
+          echo "1. Secrets não configurados (SUPABASE_URL, SUPABASE_ANON_KEY)"
+          echo "2. Tabela 'keep_alive_log' não existe"
+          echo "3. RLS bloqueando SELECT (falta policy)"
+          echo "4. Chave expirou ou foi revogada"
+          echo ""
+          echo "Ações:"
+          echo "→ Verifique Settings → Secrets"
+          echo "→ Verifique RLS no Supabase"
+          echo "→ Execute SQL query de teste"
