@@ -2,8 +2,8 @@ name: 🔄 Manter Supabase Ativo (Dec 2025 - V2)
 
 on:
   schedule:
-    # Roda domingo e sexta às 00:00 UTC
-    - cron: '0 0 * * 0,5'
+    # Roda a cada 3 dias ao meio-dia UTC
+    - cron: '0 12 */3 * *'
   workflow_dispatch:
 
 permissions:
@@ -15,12 +15,12 @@ jobs:
     timeout-minutes: 1
     
     steps:
-      - name: 🚀 Ping Supabase Database (SELECT simples)
+      - name: 🚀 Ping Supabase Database (SELECT simples) - V2
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          echo "📍 Iniciando keep-alive do Supabase..."
+          echo "📍 Iniciando keep-alive do Supabase (V2)..."
           echo "⏰ Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           
           # Fazer SELECT simples na tabela (mais confiável que INSERT)
@@ -44,16 +44,37 @@ jobs:
             exit 1
           fi
       
-      - name: ✅ Sucesso - Registrar
+      - name: 📝 Registrar execução V2 no banco
+        if: success()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Inserir marcador de execução V2
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/keep_alive_log" \
+            -H "Content-Type: application/json" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -d '{
+              "source": "github-actions-v2-workflow",
+              "message": "✅ V2 Workflow executed successfully (GET SELECT method)",
+              "workflow_version": "v2",
+              "method": "GET"
+            }'
+          
+          echo "✅ Marcador V2 inserido no banco!"
+      
+      - name: ✅ Sucesso - V2 Executado
         if: success()
         run: |
-          echo "🎉 Keep-Alive executado com sucesso!"
-          echo "⏭️  Próxima execução: próximo domingo ou sexta-feira"
+          echo "🎉 Keep-Alive V2 executado com sucesso!"
+          echo "📊 Dados inseridos com marcador 'v2' para identificação"
+          echo "⏭️  Próxima execução: em 3 dias"
       
       - name: ❌ Erro - Verificar Logs
         if: failure()
         run: |
-          echo "⚠️  FALHA ao executar keep-alive!"
+          echo "⚠️  FALHA ao executar keep-alive V2!"
           echo ""
           echo "Possíveis causas:"
           echo "1. Secrets não configurados (SUPABASE_URL, SUPABASE_ANON_KEY)"
