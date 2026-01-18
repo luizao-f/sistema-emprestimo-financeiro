@@ -1,0 +1,55 @@
+name: 🔄 Manter Supabase Ativo (Dec 2025 - V2)
+
+on:
+  schedule:
+    # Roda domingo e sexta às 00:00 UTC
+    - cron: '0 0 * * 0,5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    
+    steps:
+      - name: 🚀 Ping Supabase Database (SELECT simples)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          echo "📍 Iniciando keep-alive do Supabase..."
+          echo "⏰ Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          
+          # Fazer SELECT simples (mais confiável que INSERT)
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X GET "${SUPABASE_URL}/rest/v1/keep_alive_log?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "📊 HTTP Response Code: $HTTP_CODE"
+          echo "📦 Response Body: $BODY"
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Ping executado com sucesso!"
+            echo "🎉 Supabase database está ATIVO"
+            exit 0
+          else
+            echo "❌ Erro ao fazer ping. HTTP Code: $HTTP_CODE"
+            exit 1
+          fi
+      
+      - name: ✅ Sucesso
+        if: success()
+        run: echo "🎉 Keep-Alive executado com sucesso!"
+      
+      - name: ❌ Erro
+        if: failure()
+        run: |
+          echo "⚠️  FALHA ao executar keep-alive!"
+          echo "Verifique: Secrets, RLS, Tabela"
