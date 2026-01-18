@@ -50,16 +50,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          # Inserir marcador de execução V2
+          # Inserir marcador de execução V2 (apenas a coluna 'source')
           curl -s -X POST "${SUPABASE_URL}/rest/v1/keep_alive_log" \
             -H "Content-Type: application/json" \
             -H "apikey: ${SUPABASE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_KEY}" \
             -d '{
-              "source": "github-actions-v2-workflow",
-              "message": "✅ V2 Workflow executed successfully (GET SELECT method)",
-              "workflow_version": "v2",
-              "method": "GET"
+              "source": "github-actions-v2-workflow"
             }'
           
           echo "✅ Marcador V2 inserido no banco!"
@@ -68,7 +65,7 @@ jobs:
         if: success()
         run: |
           echo "🎉 Keep-Alive V2 executado com sucesso!"
-          echo "📊 Dados inseridos com marcador 'v2' para identificação"
+          echo "📊 Dados inseridos com marcador 'github-actions-v2-workflow'"
           echo "⏭️  Próxima execução: em 3 dias"
       
       - name: ❌ Erro - Verificar Logs
@@ -79,7 +76,7 @@ jobs:
           echo "Possíveis causas:"
           echo "1. Secrets não configurados (SUPABASE_URL, SUPABASE_ANON_KEY)"
           echo "2. Tabela 'keep_alive_log' não existe"
-          echo "3. RLS bloqueando SELECT (falta policy)"
+          echo "3. RLS bloqueando SELECT ou INSERT (falta policy)"
           echo "4. Chave expirou ou foi revogada"
           echo ""
           echo "Ações:"
